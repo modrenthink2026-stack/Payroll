@@ -1,4 +1,5 @@
-import {rpc,signIn,signUp,signOut,currentUser,changePassword} from './api.js';
+import {rpc,signIn,signUp,signOut,currentUser,changePassword,requestPasswordReset,acceptRecoveryLink,recoveryActive} from './api.js';
+import {isRecoveryCallback} from './recovery.js';
 import {money,esc,parseCSV,csvText,weightedScore,letterTypes,letterBody} from './domain.js';
 const app=document.querySelector('#app'),modal=document.querySelector('#modal');
 let companies=[],company=null,data={},page='overview',month=new Date().toISOString().slice(0,7),search='';
@@ -30,9 +31,37 @@ async function load(){
  data=await rpc('state',{company_id:company.id});render();
 }
 function login(error=''){
- app.innerHTML=`<div class="login"><section class="login-art"><div class="brand"><span class="brand-mark">p</span><div>Payroll Manager<small>PEOPLE & PAY</small></div></div><div><h1>Take care of people.<br><em>We’ll organize the pay.</em></h1><p>A clear workspace for your staff, attendance, leave, monthly salaries, and every milestone in between.</p><div class="art-card"><span class="pill">A connected workflow</span><h2>From attendance to approval.</h2><p>HR inputs · Accountant review · Private payslips</p><div class="art-bars" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div></div></div><p class="small-text">Company access and staff privacy enforced by Supabase.</p></section><section class="login-form"><div class="login-box"><span class="pill">Your people workspace</span><h1>Welcome back</h1><p class="muted">Sign in with your authorized staff account.</p><form id="login-form">${field('email','Email address','','email','required autocomplete="username"')}${field('password','Password','','password','required autocomplete="current-password"')}${error?`<div class="error">${esc(error)}</div>`:''}<button type="submit">Sign in →</button><button type="button" class="secondary" data-action="signup">Create staff account</button></form><footer>New staff: ask HR to add your email to Staff Master first, then create your account and confirm your email. Existing Supabase users can use their current password. Contact your administrator for password recovery.</footer></div></section></div>`;
+ app.innerHTML=`<div class="login"><section class="login-art"><div class="brand"><span class="brand-mark">p</span><div>Payroll Manager<small>PEOPLE & PAY</small></div></div><div><h1>Take care of people.<br><em>We’ll organize the pay.</em></h1><p>A clear workspace for your staff, attendance, leave, monthly salaries, and every milestone in between.</p><div class="art-card"><span class="pill">A connected workflow</span><h2>From attendance to approval.</h2><p>HR inputs · Accountant review · Private payslips</p><div class="art-bars" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div></div></div><p class="small-text">Company access and staff privacy enforced by Supabase.</p></section><section class="login-form"><div class="login-box"><span class="pill">Your people workspace</span><h1>Welcome back</h1><p class="muted">Sign in with your authorized staff account.</p><form id="login-form">${field('email','Email address','','email','required autocomplete="username"')}${field('password','Password','','password','required autocomplete="current-password"')}${error?`<div class="error">${esc(error)}</div>`:''}<button type="submit">Sign in →</button><button type="button" class="link-button" data-action="forgot-password">Forgot password?</button><button type="button" class="link-button" data-action="recovery-paste">Have a reset link?</button><button type="button" class="secondary" data-action="signup">Create staff account</button></form><footer>New staff: ask HR to add your email to Staff Master first, then create your account and confirm your email. Existing Supabase users can use their current password. Use Forgot password to request a private recovery email.</footer></div></section></div>`;
  $('#login-form').onsubmit=async e=>{e.preventDefault();const b=e.submitter;b.disabled=true;const f=new FormData(e.target);try{await signIn(f.get('email'),f.get('password'));await load();}catch(err){login(err.message);}};
 }
+
+function forgotPassword(email=''){
+ form('Forgot password',field('recovery_email','Account email address',email,'email','required autocomplete="email"')+`<div class="field full notice">We’ll send a private reset link if this account exists. Your new password will also apply to Project Manager because the account is shared.</div>`,async p=>{
+  await requestPasswordReset(p.recovery_email,location.origin);
+  modal.close();recoveryLinkForm('If this account exists, a reset email has been requested. Check your inbox and spam folder.');
+ });
+ $('#editor button[type=submit]').textContent='Send reset email';
+}
+function recoveryLinkForm(message=''){
+ form('Check your reset email',`<div class="field full"><p>${esc(message||'Use the latest password-reset email.')}</p><p class="muted">Open the reset link to continue. If it opens Project Manager instead, return here, copy the original reset link from the email without opening it again, and paste it below. An already-used link requires a new reset email.</p></div><div class="field full"><label for="f-recovery_link">Reset link from your email</label><textarea id="f-recovery_link" name="recovery_link" required autocomplete="off" spellcheck="false" placeholder="Paste the complete reset link here"></textarea></div>`,async p=>{
+  await acceptRecoveryLink(p.recovery_link.trim(),location.origin);modal.close();resetPasswordScreen();
+ });
+ $('#editor button[type=submit]').textContent='Continue securely';
+}
+function resetPasswordScreen(){
+ app.innerHTML=`<section class="login-form"><div class="login-box"><span class="pill">Password recovery</span><h1>Set a new password</h1><p class="muted">Account: ${esc(currentUser()?.email||'verified account')}</p><form id="reset-password-form">${field('new_password','New password','','password','required minlength="12" autocomplete="new-password"')}${field('confirm_password','Confirm new password','','password','required minlength="12" autocomplete="new-password"')}<div class="notice">Use at least 12 characters. This password also applies to Project Manager for the same Supabase account.</div><div id="reset-error" class="error" hidden></div><button type="submit">Update password</button><button type="button" class="secondary" data-action="recovery-back">Back to sign in</button></form></div></section>`;
+ $('#reset-password-form').onsubmit=async e=>{
+  e.preventDefault();const f=new FormData(e.target),b=e.submitter;b.disabled=true;
+  try{
+   if(f.get('new_password')!==f.get('confirm_password'))throw Error('The passwords do not match.');
+   await changePassword(f.get('new_password'));
+   // End the recovery session even if remote logout is temporarily unavailable.
+   try{await signOut();}catch{}
+   login();toast('Password updated. Sign in using your new password.');
+  }catch(err){$('#reset-error').hidden=false;$('#reset-error').textContent=err.message;b.disabled=false;}
+ };
+}
+
 function render(){
  const navigation=[['overview','◫','Overview'],['staff','♧','Staff master'],['attendance','◷','Attendance'],['leave','▧','Leave & approvals'],['payroll','▤','Payroll & payslips'],['letters','▱','Letters & service'],['assessments','☆','Assessments'],['reports','▥','Reports'],['settings','⚙','Company settings']].filter(([p])=>p!=='settings'||admin());
  if(!navigation.some(n=>n[0]===page))page='overview';
@@ -62,6 +91,9 @@ function printDocument(title,body){modal.close();page='letters';app.innerHTML=`<
 async function action(a,id){
  if(a==='modal-close'){modal.close();return;}if(a==='back'){render();return;}if(a==='print'){window.print();return;}
  if(a==='logout'){await signOut();company=null;data={};login();return;}if(a==='reload'){await load();return;}if(a==='goto-payroll'){page='payroll';render();return;}
+ if(a==='forgot-password'){forgotPassword($('#f-email')?.value||'');return;}
+ if(a==='recovery-paste'){recoveryLinkForm();return;}
+ if(a==='recovery-back'){await signOut();login();return;}
  if(a==='signup'){form('Create your staff account',field('email','Email used by HR','','email','required')+field('password','Password (at least 12 characters)','','password','required minlength="12"'),async p=>{await signUp(p.email,p.password);modal.close();if(currentUser())await load();else login();toast('Check your email and confirm your account before signing in.');});return;}
  if(a==='password'){form('Change your password',field('password','New password','','password','minlength="12" required'),async p=>{await changePassword(p.password);modal.close();toast('Password updated');});return;}
  if(a==='staff-new'||a==='staff-edit'){
@@ -99,4 +131,13 @@ async function action(a,id){
  if(a.startsWith('report-')){const kind=a.slice(7);const rows=(data[kind]||[]).map(r=>{if(kind==='staff')return {staff_code:r.code,name:r.name,department:r.department,designation:r.designation,joining_date:r.joining_date,service:r.service_status,status:r.status};if(kind==='attendance')return {staff:staff(r.staff_id)?.name,date:r.work_date,status:r.status,late_minutes:r.late_minutes,early_minutes:r.early_minutes};if(kind==='leaves')return {staff:staff(r.staff_id)?.name,type:r.leave_type,from:r.from_date,to:r.to_date,units:r.units,status:r.status};if(kind==='documents')return {recipient:r.recipient,type:r.type,number:r.number,status:r.status,effective_date:r.effective_date};if(kind==='assessments')return {staff:staff(r.staff_id)?.name,period:r.period,score:r.score,comments:r.comments};return {staff:staff(r.staff_id)?.name,amount:r.amount,reason:r.reason,date:r.created_at};});if(!rows.length){toast('No records to export');return;}download(kind+'.csv',csvText(rows));return;}
 }
 document.addEventListener('click',async e=>{const n=e.target.closest('[data-action],[data-page]');if(!n)return;if(n.dataset.page){page=n.dataset.page;search='';render();return;}n.disabled=true;try{await action(n.dataset.action,n.dataset.id);}catch(err){toast(err.message);}finally{n.disabled=false;}});
-try{if(currentUser())await load();else login();}catch(err){login(err.message);}
+try{
+ const callback=location.href;
+ if(isRecoveryCallback(callback)){
+  // Remove credentials from the address bar before any network call or render.
+  history.replaceState(null,'',location.pathname);
+  await acceptRecoveryLink(callback,location.origin);
+ }
+ if(recoveryActive())resetPasswordScreen();else if(currentUser())await load();else login();
+}catch(err){login(err.message);}
+

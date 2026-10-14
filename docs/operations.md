@@ -10,6 +10,8 @@ The confirmed existing owner account is assigned Payroll administrator access to
 
 ## First use
 
+Password recovery is available from the login screen. See `password-recovery.md` for the email-link, paste-link and shared-account behavior.
+
 1. Administrator edits company name/address, workweek, holidays, signatory and reviewed statutory settings.
 2. HR adds staff, component salary, joining date and biometric ID; annual leave opening balances are defaults to review, not statutory entitlements. HR posts dated leave adjustments with reasons for accrual/carry-forward/expiry.
 3. Staff create accounts with the same email as Staff Master and confirm their email. Existing confirmed Supabase accounts can sign in directly. Verified email linking gives own-staff access. No caller may pick an administrator role during registration.

@@ -14,7 +14,7 @@ const page=await browser.newPage({viewport:{width:1440,height:1050}}),errors=[];
 page.on('pageerror',e=>errors.push(e.message));
 await page.route('http://payroll.test/**',async route=>{
  const path=new URL(route.request().url()).pathname;
- if(path==='/api.js')return route.fulfill({contentType:'text/javascript',body:`const u=${JSON.stringify(user)},c=${JSON.stringify(co)},d=${JSON.stringify(fixture)}; export const currentUser=()=>u; export async function rpc(a,p){window.__calls=(window.__calls||[]).concat([{a,p}]); if(a==='bootstrap')return {companies:[{...c,role:window.__role||'admin'}]};if(a==='state')return d;return {ok:true};} export async function signIn(){} export async function signUp(){} export async function signOut(){} export async function changePassword(){}`});
+ if(path==='/api.js')return route.fulfill({contentType:'text/javascript',body:`const u=${JSON.stringify(user)},c=${JSON.stringify(co)},d=${JSON.stringify(fixture)}; export const currentUser=()=>u; export async function rpc(a,p){window.__calls=(window.__calls||[]).concat([{a,p}]); if(a==='bootstrap')return {companies:[{...c,role:window.__role||'admin'}]};if(a==='state')return d;return {ok:true};} export async function signIn(){} export async function signUp(){} export async function signOut(){} export async function changePassword(){} export async function requestPasswordReset(){} export async function acceptRecoveryLink(){} export const recoveryActive=()=>false;`});
  const local=resolve('public',path==='/'?'index.html':'.'+path);
  return route.fulfill({body:await readFile(local),contentType:({'.js':'text/javascript','.css':'text/css','.html':'text/html'})[extname(local)]||'text/plain'});
 });
