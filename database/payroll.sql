@@ -25,6 +25,17 @@ create table payroll_private.requests(token uuid primary key,company_id uuid ref
 revoke all on payroll_private.requests from public,anon,authenticated;
 create unique index payroll_refund_reference_idx on public.payroll_deposits(staff_id,reason) where amount<0;
 
+
+alter table public.payroll_staff
+ add column shift_name text not null default 'General',
+ add column shift_start time not null default '09:00',
+ add column shift_end time not null default '18:00',
+ add column break_minutes int not null default 0 check(break_minutes>=0),
+ add column late_grace int not null default 0 check(late_grace between 0 and 1440),
+ add column early_grace int not null default 0 check(early_grace between 0 and 1440),
+ add constraint payroll_staff_shift_valid check(shift_start<>shift_end and break_minutes < ((extract(epoch from (shift_end-shift_start))::int+86400)%86400)/60);
+alter table public.payroll_attendance add column shift_snapshot jsonb;
+
 create function payroll_private.role(cid uuid) returns text language sql stable security definer set search_path='' as $$
  select m.role from public.payroll_members m where m.company_id=cid and m.user_id=auth.uid()
  and not exists(select 1 from public.payroll_staff s where s.company_id=cid and s.user_id=auth.uid() and s.status='separated')
@@ -208,8 +219,33 @@ begin
   if target_uid=uid then raise exception 'Cannot change your own administrator role';end if;
   if payload->>'role'='staff' and not exists(select 1 from public.payroll_staff where company_id=cid and lower(payroll_staff.email)=lower(payload->>'email') and status='active') then raise exception 'Create the staff master first';end if;
   insert into public.payroll_members values(cid,target_uid,payload->>'role') on conflict(company_id,user_id) do update set role=excluded.role;
+ elsif action='staff_import' then
+  if r not in ('admin','hr') then raise exception 'HR access required';end if;
+  if jsonb_typeof(payload->'rows') is distinct from 'array' or jsonb_array_length(payload->'rows') not between 1 and 500 then raise exception 'Import 1 to 500 staff rows';end if;
+  units=0;
+  for j in select * from jsonb_array_elements(payload->'rows') loop
+   perform payroll_private.dispatch('staff_save',(j - 'staff_id' - 'id' - 'request_id')||jsonb_build_object('company_id',cid,'staff_id',null,'request_id',null));
+   units=units+1;
+  end loop;
+  out=jsonb_build_object('inserted',units);
+ elsif action='staff_delete' then
+  if r not in ('admin','hr') then raise exception 'HR access required';end if;
+  if sid is null or payload->>'confirm_code' is distinct from st.code then raise exception 'Confirm the staff code';end if;
+  if st.user_id is not null then raise exception 'Linked staff cannot be deleted; use authorized separation to retain history';end if;
+  if exists(select 1 from public.payroll_attendance where staff_id=sid) or exists(select 1 from public.payroll_punches where staff_id=sid)
+   or exists(select 1 from public.payroll_leaves where staff_id=sid) or exists(select 1 from public.payroll_leave_ledger where staff_id=sid)
+   or exists(select 1 from public.payroll_lines where staff_id=sid) or exists(select 1 from public.payroll_deposits where staff_id=sid)
+   or exists(select 1 from public.payroll_documents where staff_id=sid) or exists(select 1 from public.payroll_assessments where staff_id=sid)
+   or exists(select 1 from public.payroll_increments where staff_id=sid)
+   or (select count(*) from public.payroll_salaries where staff_id=sid)>1
+  then raise exception 'Staff has history and cannot be deleted; use authorized separation';end if;
+  delete from public.payroll_profiles where staff_id=sid;
+  delete from public.payroll_salaries where staff_id=sid;
+  delete from public.payroll_staff where id=sid and company_id=cid;
  elsif action='staff_save' then
   if r not in ('admin','hr') then raise exception 'HR access required';end if;
+  if nullif(trim(payload->>'code'),'') is null or nullif(trim(payload->>'name'),'') is null or nullif(trim(payload->>'email'),'') is null or nullif(payload->>'joining_date','') is null then raise exception 'Code, name, email and joining date are required';end if;
+  if sid is null and exists(select 1 from public.payroll_staff where company_id=cid and (lower(code)=lower(trim(payload->>'code')) or lower(email)=lower(trim(payload->>'email')))) then raise exception 'Staff code or email already exists';end if;
   if payload->>'email' !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$' then raise exception 'Enter a valid email';end if;
   if sid is null then
    insert into public.payroll_staff(company_id,code,name,email,department,designation,joining_date,biometric_id,probation_end)
@@ -227,6 +263,11 @@ begin
    if target_uid is null then raise exception 'Assign a confirmed manager role before team mapping';end if;
    update public.payroll_staff set manager_user_id=target_uid where id=sid;
   end if;
+  update public.payroll_staff set
+   shift_name=coalesce(nullif(trim(payload->>'shift_name'),''),shift_name),
+   shift_start=coalesce(nullif(payload->>'shift_start','')::time,shift_start),shift_end=coalesce(nullif(payload->>'shift_end','')::time,shift_end),
+   break_minutes=coalesce(nullif(payload->>'break_minutes','')::int,break_minutes),
+   late_grace=coalesce(nullif(payload->>'late_grace','')::int,late_grace),early_grace=coalesce(nullif(payload->>'early_grace','')::int,early_grace) where id=sid;
   rec=sid;
  elsif action='tax_inputs' then
   if r not in ('admin','accountant') then raise exception 'Accountant access required';end if;
@@ -240,6 +281,16 @@ begin
    insert into public.payroll_attendance(company_id,staff_id,work_date,status,in_time,out_time,late_minutes,early_minutes,note,reviewed_by)
    values(cid,sid,day,payload->>'status',nullif(payload->>'in_time','')::time,nullif(payload->>'out_time','')::time,coalesce((payload->>'late_minutes')::int,0),coalesce((payload->>'early_minutes')::int,0),coalesce(payload->>'note',''),uid)
    on conflict(staff_id,work_date) do update set status=excluded.status,in_time=excluded.in_time,out_time=excluded.out_time,late_minutes=excluded.late_minutes,early_minutes=excluded.early_minutes,note=excluded.note,reviewed_by=uid;
+   if coalesce((payload->>'calculate_shift')::boolean,false) then
+    if nullif(payload->>'in_time','') is null or nullif(payload->>'out_time','') is null then raise exception 'In and out times are required for shift calculation';end if;
+    if (day+((payload->>'out_time')::time)+case when coalesce((payload->>'out_next_day')::boolean,false) then interval '1 day' else interval '0 day' end) <= (day+((payload->>'in_time')::time)) then raise exception 'Out time must be after in time; select next-day out for overnight work';end if;
+    update public.payroll_attendance set
+     late_minutes=greatest(0,floor(extract(epoch from ((payload->>'in_time')::time-st.shift_start))/60)::int-st.late_grace),
+     early_minutes=greatest(0,floor(extract(epoch from ((day+st.shift_end+case when st.shift_end<st.shift_start then interval '1 day' else interval '0 day' end)-(day+(payload->>'out_time')::time+case when coalesce((payload->>'out_next_day')::boolean,false) then interval '1 day' else interval '0 day' end)))/60)::int-st.early_grace),
+     shift_snapshot=jsonb_build_object('name',st.shift_name,'start',st.shift_start,'end',st.shift_end,'break_minutes',st.break_minutes,'late_grace',st.late_grace,'early_grace',st.early_grace,'out_next_day',coalesce((payload->>'out_next_day')::boolean,false)) where staff_id=sid and work_date=day;
+   else
+    update public.payroll_attendance set shift_snapshot=null where staff_id=sid and work_date=day;
+   end if;
   end loop;
  elsif action='punch_import' then
   if r not in ('admin','hr') then raise exception 'HR access required';end if;

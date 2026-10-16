@@ -1,1 +1,1 @@
-company_code,employee_code,full_name,department,designation,manager_code,joining_date,employment_category,work_state,work_email,biometric_id,salary_effective_from,basic,da,hra,other_allowance,pf_coverage_review,esi_coverage_review,tax_regime_review,deposit_eligibility_review
+code,name,email,department,designation,joining_date,basic,da,hra,other,biometric_id,shift_name,shift_start,shift_end,break_minutes,late_grace,early_grace,pf_enabled,esi_enabled,deposit_eligible,bank_account,ifsc,pan,uan,esi_number,manager_email,probation_end

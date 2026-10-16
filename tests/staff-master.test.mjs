@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {validateStaffImport,shiftMinutes,staffTemplate} from '../public/staff-master.js';
+import {parseCSV} from '../public/domain.js';
+const row={code:'A01',name:'Sample',email:'sample@example.invalid',joining_date:'2026-10-16',basic:'20000'};
+test('template and import defaults with explicit coverage',()=>{assert.match(staffTemplate(),/shift_start/);const [r]=validateStaffImport([{...row,pf_enabled:'yes'}]);assert.equal(r.pf_enabled,true);assert.equal(r.esi_enabled,false);assert.equal(r.shift_start,'09:00');assert.equal(r.da,0);});
+test('quoted names, Unicode and leading zero IDs survive',()=>{const [r]=validateStaffImport(parseCSV('code,name,email,joining_date,basic,biometric_id\n001,"రాము, Sample",a@example.invalid,2026-10-16,10000,0001'));assert.equal(r.code,'001');assert.equal(r.biometric_id,'0001');assert.equal(r.name,'రాము, Sample');});
+test('duplicates within batch and company rejected case-insensitively',()=>{assert.throws(()=>validateStaffImport([row,{...row,code:'a01',email:'other@example.invalid'}]),/Duplicate/);assert.throws(()=>validateStaffImport([row],[{code:'OTHER',email:'SAMPLE@example.invalid'}]),/Duplicate/);});
+test('invalid dates, numbers, flags, unknown columns and batch sizes fail',()=>{for(const edit of [{joining_date:'2026-02-30'},{basic:'-1'},{basic:'NaN'},{basic:'1e4'},{basic:'1.001'},{pf_enabled:'maybe'},{shift_start:'25:00'},{shift_start:'09:00',shift_end:'09:00'},{break_minutes:'540'},{late_grace:'1.5'},{company_id:'inject'}])assert.throws(()=>validateStaffImport([{...row,...edit}]));assert.throws(()=>validateStaffImport([]));assert.throws(()=>validateStaffImport(Array(501).fill(row)));});
+test('overnight shift and break boundaries',()=>{assert.equal(shiftMinutes('22:00','06:00',30),450);assert.equal(shiftMinutes('09:00','18:00',0),540);assert.throws(()=>shiftMinutes('22:00','06:00',480));assert.throws(()=>shiftMinutes('22:00','06:00',-1));});
