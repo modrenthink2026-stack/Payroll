@@ -80,6 +80,18 @@ create policy lines_read on public.payroll_lines for select to authenticated usi
 create policy deposits_read on public.payroll_deposits for select to authenticated using(payroll_private.role(company_id) in ('admin','hr','accountant') or payroll_private.own(staff_id));
 create policy audit_read on public.payroll_audit for select to authenticated using(payroll_private.role(company_id)='admin');
 
+alter table public.payroll_staff alter column email drop not null;
+alter table public.payroll_staff add column erp_code text not null default '', add column employment_status text not null default '', add column employment_category text not null default '';
+create table public.payroll_staff_details (
+ staff_id uuid primary key, company_id uuid not null, details jsonb not null default '{}' check(jsonb_typeof(details)='object'),
+ source_records jsonb not null default '[]' check(jsonb_typeof(source_records)='array'),
+ foreign key(company_id,staff_id) references public.payroll_staff(company_id,id) on delete cascade
+);
+alter table public.payroll_staff_details enable row level security;
+revoke all on public.payroll_staff_details from public,anon,authenticated;
+grant select on public.payroll_staff_details to authenticated;
+create policy staff_details_read on public.payroll_staff_details for select to authenticated using(payroll_private.role(company_id) in ('admin','hr') or payroll_private.own(staff_id));
+
 create function payroll_private.calculate(cid uuid,month_start date) returns uuid language plpgsql security definer set search_path='' as $$
 declare c public.payroll_companies; s public.payroll_staff; p public.payroll_profiles; sal public.payroll_salaries; att public.payroll_attendance;
  day date; last_day date; rid uuid; ndays int; remaining int; factor numeric; units numeric; lop numeric; paid numeric;
@@ -180,6 +192,7 @@ begin
  if action='state' then
   return jsonb_build_object(
    'staff',coalesce((select jsonb_agg(s order by code) from public.payroll_staff s where company_id=cid and (r in ('admin','hr','accountant') or payroll_private.own(id) or (r='manager' and payroll_private.team(id)))),'[]'::jsonb),
+   'staff_details',coalesce((select jsonb_agg(d) from public.payroll_staff_details d where company_id=cid and (r in ('admin','hr') or payroll_private.own(staff_id))),'[]'::jsonb),
    'profiles',coalesce((select jsonb_agg(p) from public.payroll_profiles p where company_id=cid and (r in ('admin','hr','accountant') or payroll_private.own(staff_id))),'[]'::jsonb),
    'salaries',coalesce((select jsonb_agg(s order by effective_from) from public.payroll_salaries s where company_id=cid and (r in ('admin','hr','accountant') or payroll_private.own(staff_id))),'[]'::jsonb),
    'attendance',coalesce((select jsonb_agg(a) from (select * from public.payroll_attendance where company_id=cid and (r in ('admin','hr','accountant') or payroll_private.own(staff_id) or (r='manager' and payroll_private.team(staff_id))) order by work_date desc,id limit 2000)a),'[]'::jsonb),
@@ -219,6 +232,23 @@ begin
   if target_uid=uid then raise exception 'Cannot change your own administrator role';end if;
   if payload->>'role'='staff' and not exists(select 1 from public.payroll_staff where company_id=cid and lower(payroll_staff.email)=lower(payload->>'email') and status='active') then raise exception 'Create the staff master first';end if;
   insert into public.payroll_members values(cid,target_uid,payload->>'role') on conflict(company_id,user_id) do update set role=excluded.role;
+ elsif action='staff_roster_import' then
+  if r not in ('admin','hr') then raise exception 'HR access required';end if;
+  if jsonb_typeof(payload->'rows') is distinct from 'array' or jsonb_array_length(payload->'rows') not between 1 and 500 then raise exception 'Import 1 to 500 staff rows';end if;
+  units=0;
+  for j in select * from jsonb_array_elements(payload->'rows') loop
+   if nullif(trim(j->>'code'),'') is null or nullif(trim(j->>'name'),'') is null or nullif(j->>'joining_date','') is null then raise exception 'Staff code, name and joining date are required';end if;
+   if exists(select 1 from public.payroll_staff where company_id=cid and lower(code)=lower(trim(j->>'code'))) then raise exception 'Staff code already exists';end if;
+   if jsonb_typeof(j->'personal_details') is distinct from 'object' or jsonb_typeof(j->'source_records') is distinct from 'array' then raise exception 'Invalid personnel details';end if;
+   if exists(select 1 from jsonb_object_keys(j->'personal_details') k where not (k=ANY(array['S NO','Staff Name','Staff Code','Biometric Code','Staff ERPCode','Staff Department Name','Date Of Birth','Sex','Marital Status','Marriage Anniversary','Email','Alternate Email','Mobile No','Alternate No','Emergency No','Whatsapp No','Father Name','Father Occupation','Father PhoneNo','Spouse Name','Spouse PhoneNo','Spouse Ocupation','Address','Landmark1','Landmark2','Country Name','State Name','City Name','AdhaarCard No','PANCard No','Passport No','Government ID','Caste','Sub Caste','Nationality','CitizenShip','Religion','BloodGroup','Bank Name','Bank AccountNo','EPFNo','UAN','ESINo','Bank BranchName','Bank CityName','Bank StateName','Staff Payroll Entity','IFSCCode','Designation','Specialization','Qualification','CTET Qualified','Trained As','Date Of Joining','Date Of InActive','Employment Status','Previous Experience','Experience','Total Experience','Previous InstitutionName','Previous Designation','Security Deposit','Date','Payment Mode','Remarks','UserType Name','AccessLevel','IsDivorced','MotherName','Employment Category','BED Course','Subjects Assigned','NameAsPerBank']::text[]))) then raise exception 'Unknown personnel field';end if;
+   insert into public.payroll_staff(company_id,code,name,email,department,designation,joining_date,leaving_date,status,service_status,biometric_id,leave_balances,erp_code,employment_status,employment_category)
+   values(cid,trim(j->>'code'),trim(j->>'name'),null,coalesce(j->>'department',''),coalesce(j->>'designation',''),(j->>'joining_date')::date,nullif(j->>'leaving_date','')::date,
+    case when nullif(j->>'leaving_date','')::date<=current_date then 'separated' else 'active' end,'imported',nullif(j->>'biometric_id',''),'{}',coalesce(j->'personal_details'->>'Staff ERPCode',''),coalesce(j->'personal_details'->>'Employment Status',''),coalesce(j->'personal_details'->>'Employment Category','')) returning id into sid;
+   insert into public.payroll_profiles(staff_id,company_id,bank_account,ifsc,pan,uan,esi_number) values(sid,cid,coalesce(j->>'bank_account',''),coalesce(j->>'ifsc',''),coalesce(j->>'pan',''),coalesce(j->>'uan',''),coalesce(j->>'esi_number',''));
+   insert into public.payroll_staff_details(staff_id,company_id,details,source_records) values(sid,cid,j->'personal_details',j->'source_records');
+   units=units+1;
+  end loop;
+  out=jsonb_build_object('inserted',units);
  elsif action='staff_import' then
   if r not in ('admin','hr') then raise exception 'HR access required';end if;
   if jsonb_typeof(payload->'rows') is distinct from 'array' or jsonb_array_length(payload->'rows') not between 1 and 500 then raise exception 'Import 1 to 500 staff rows';end if;
@@ -244,18 +274,18 @@ begin
   delete from public.payroll_staff where id=sid and company_id=cid;
  elsif action='staff_save' then
   if r not in ('admin','hr') then raise exception 'HR access required';end if;
-  if nullif(trim(payload->>'code'),'') is null or nullif(trim(payload->>'name'),'') is null or nullif(trim(payload->>'email'),'') is null or nullif(payload->>'joining_date','') is null then raise exception 'Code, name, email and joining date are required';end if;
+  if nullif(trim(payload->>'code'),'') is null or nullif(trim(payload->>'name'),'') is null or nullif(payload->>'joining_date','') is null then raise exception 'Code, name and joining date are required';end if;
   if sid is null and exists(select 1 from public.payroll_staff where company_id=cid and (lower(code)=lower(trim(payload->>'code')) or lower(email)=lower(trim(payload->>'email')))) then raise exception 'Staff code or email already exists';end if;
-  if payload->>'email' !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$' then raise exception 'Enter a valid email';end if;
+  if nullif(payload->>'email','') is not null and payload->>'email' !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$' then raise exception 'Enter a valid email';end if;
   if sid is null then
    insert into public.payroll_staff(company_id,code,name,email,department,designation,joining_date,biometric_id,probation_end)
-   values(cid,nullif(trim(payload->>'code'),''),nullif(trim(payload->>'name'),''),lower(trim(payload->>'email')),coalesce(payload->>'department',''),coalesce(payload->>'designation',''),(payload->>'joining_date')::date,nullif(payload->>'biometric_id',''),nullif(payload->>'probation_end','')::date) returning id into sid;
+   values(cid,nullif(trim(payload->>'code'),''),nullif(trim(payload->>'name'),''),nullif(lower(trim(payload->>'email')),''),coalesce(payload->>'department',''),coalesce(payload->>'designation',''),(payload->>'joining_date')::date,nullif(payload->>'biometric_id',''),nullif(payload->>'probation_end','')::date) returning id into sid;
    insert into public.payroll_profiles(staff_id,company_id) values(sid,cid);
    insert into public.payroll_salaries(company_id,staff_id,effective_from,basic,da,hra,other,approved_by)
    values(cid,sid,(payload->>'joining_date')::date,(payload->>'basic')::numeric,(payload->>'da')::numeric,(payload->>'hra')::numeric,(payload->>'other')::numeric,uid);
   else
-   if lower(payload->>'email')<>st.email and st.user_id is not null then raise exception 'Linked email changes require account review';end if;
-   update public.payroll_staff set name=nullif(trim(payload->>'name'),''),department=payload->>'department',designation=payload->>'designation',biometric_id=nullif(payload->>'biometric_id',''),probation_end=nullif(payload->>'probation_end','')::date where id=sid;
+   if nullif(lower(trim(payload->>'email')),'') is distinct from st.email and st.user_id is not null then raise exception 'Linked email changes require account review';end if;
+   update public.payroll_staff set email=nullif(lower(trim(payload->>'email')),''),name=nullif(trim(payload->>'name'),''),department=payload->>'department',designation=payload->>'designation',biometric_id=nullif(payload->>'biometric_id',''),probation_end=nullif(payload->>'probation_end','')::date where id=sid;
   end if;
   update public.payroll_profiles set bank_account=coalesce(payload->>'bank_account',''),ifsc=coalesce(payload->>'ifsc',''),pan=coalesce(payload->>'pan',''),uan=coalesce(payload->>'uan',''),esi_number=coalesce(payload->>'esi_number',''),pf_enabled=coalesce((payload->>'pf_enabled')::boolean,false),esi_enabled=coalesce((payload->>'esi_enabled')::boolean,false),deposit_eligible=coalesce((payload->>'deposit_eligible')::boolean,false) where staff_id=sid;
   if nullif(payload->>'manager_email','') is not null then
@@ -268,7 +298,19 @@ begin
    shift_start=coalesce(nullif(payload->>'shift_start','')::time,shift_start),shift_end=coalesce(nullif(payload->>'shift_end','')::time,shift_end),
    break_minutes=coalesce(nullif(payload->>'break_minutes','')::int,break_minutes),
    late_grace=coalesce(nullif(payload->>'late_grace','')::int,late_grace),early_grace=coalesce(nullif(payload->>'early_grace','')::int,early_grace) where id=sid;
+  if payload ? 'personal_details' then
+   j=payload->'personal_details';
+   if jsonb_typeof(j) is distinct from 'object' or exists(select 1 from jsonb_object_keys(j) k where not (k=ANY(array['S NO','Staff Name','Staff Code','Biometric Code','Staff ERPCode','Staff Department Name','Date Of Birth','Sex','Marital Status','Marriage Anniversary','Email','Alternate Email','Mobile No','Alternate No','Emergency No','Whatsapp No','Father Name','Father Occupation','Father PhoneNo','Spouse Name','Spouse PhoneNo','Spouse Ocupation','Address','Landmark1','Landmark2','Country Name','State Name','City Name','AdhaarCard No','PANCard No','Passport No','Government ID','Caste','Sub Caste','Nationality','CitizenShip','Religion','BloodGroup','Bank Name','Bank AccountNo','EPFNo','UAN','ESINo','Bank BranchName','Bank CityName','Bank StateName','Staff Payroll Entity','IFSCCode','Designation','Specialization','Qualification','CTET Qualified','Trained As','Date Of Joining','Date Of InActive','Employment Status','Previous Experience','Experience','Total Experience','Previous InstitutionName','Previous Designation','Security Deposit','Date','Payment Mode','Remarks','UserType Name','AccessLevel','IsDivorced','MotherName','Employment Category','BED Course','Subjects Assigned','NameAsPerBank']::text[]))) then raise exception 'Invalid personnel fields';end if;
+   insert into public.payroll_staff_details(staff_id,company_id,details) values(sid,cid,j) on conflict(staff_id) do update set details=excluded.details;
+   update public.payroll_staff set erp_code=coalesce(j->>'Staff ERPCode',''),employment_status=coalesce(j->>'Employment Status',''),employment_category=coalesce(j->>'Employment Category','') where id=sid;
+  end if;
   rec=sid;
+ elsif action='initial_salary' then
+  if r not in ('admin','hr') then raise exception 'HR access required';end if;
+  if sid is null or exists(select 1 from public.payroll_salaries where staff_id=sid) then raise exception 'Initial salary already exists; use the increment workflow';end if;
+  if (payload->>'effective_from')::date<st.joining_date then raise exception 'Salary cannot predate joining';end if;
+  if exists(select 1 from public.payroll_runs where company_id=cid and month>=(date_trunc('month',(payload->>'effective_from')::date))::date and status in ('locked','released','paid')) then raise exception 'Payroll is locked; use a reviewed adjustment';end if;
+  insert into public.payroll_salaries(company_id,staff_id,effective_from,basic,da,hra,other,approved_by) values(cid,sid,(payload->>'effective_from')::date,(payload->>'basic')::numeric,(payload->>'da')::numeric,(payload->>'hra')::numeric,(payload->>'other')::numeric,uid);
  elsif action='tax_inputs' then
   if r not in ('admin','accountant') then raise exception 'Accountant access required';end if;
   update public.payroll_profiles set annual_tax=(payload->>'annual_tax')::numeric,tax_paid=(payload->>'tax_paid')::numeric,other_deductions=(payload->>'other_deductions')::numeric,pt=(payload->>'pt')::numeric where staff_id=sid;
