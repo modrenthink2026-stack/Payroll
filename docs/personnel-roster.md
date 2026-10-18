@@ -1,4 +1,4 @@
-# Full personnel roster — proposed release
+# Full personnel roster
 
 The roster importer supports the 73 source headers in `public/roster.js`, alongside the existing salary CSV format. Header metadata and synthetic tests are committed; real employee records must never be committed.
 
@@ -12,9 +12,9 @@ Source Email remains a contact field. Roster imports do not set a login email or
 
 No salary, statutory coverage, shift assignment, leave opening balance or deposit ledger amount is inferred from a personnel-only file. Staff show Salary not set and have a reviewed initial-salary action; later changes retain the increment approval workflow. General shift defaults must be reviewed separately. Employment Status/Category are retained as source classifications; service review is marked imported rather than inferring a confirmation decision.
 
-## Database impact requiring approval
+## Approved database upgrade
 
-`database/personnel-roster-upgrade.sql` proposes:
+`database/personnel-roster-upgrade.sql` adds:
 
 - Nullable login email for staff who have no reviewed login address.
 - ERP code and employment classification columns.
@@ -23,6 +23,6 @@ No salary, statutory coverage, shift assignment, leave opening balance or deposi
 
 The replacement function is based on the previously deployed dispatch body, verified by its hash before editing. Existing payroll calculation, payroll approval, biometric processing and company-role policies are not intentionally changed. Nevertheless, replacing the shared dispatcher can affect existing workflows and requires database regression tests before release.
 
-Automatic approval review rejected applying this production upgrade because of its scope. The upgrade has NOT been applied, employee records have NOT been imported, and this branch must NOT be merged into production until approval and database checks are complete.
+The owner explicitly approved the upgrade on 18 October 2026 after reviewing its scope in PR #1. It has been applied to the authorized Supabase project. The approved personnel batch was first validated in a rollback transaction, then imported into the selected company. Full source rows remain in the protected database, outside GitHub. No Auth accounts, login links, salary amounts, statutory coverage or deposit ledger entries were inferred.
 
-Validation executed: 23 unit tests passed, JavaScript syntax passed, static build passed. `tests/roster.sql` is a proposed rollback scenario suite and has NOT run because it depends on the unapplied schema. The existing database suites must be rerun after the approved upgrade. Signed-in browser validation remains pending.
+Validation executed: 23 unit tests, JavaScript syntax and static build passed. All four database rollback suites passed: roster privacy/import invariants, staff master/shift guards, payroll workflow and payroll edge cases. The full source batch passed checks for staff counts, source-row counts, all 73 fields, and absence of invented salary/login data before saving. The security advisor reported no new findings. Signed-in browser validation remains separate from these database checks.
