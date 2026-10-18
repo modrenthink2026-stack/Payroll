@@ -56,3 +56,5 @@ export async function rpc(action,payload={}){
 }
 
 export async function accountAction(payload){await refresh();return request("/functions/v1/payroll-accounts",payload,session.access_token);}
+
+export async function assignShifts(payload){await refresh();return request('/rest/v1/rpc/payroll_assign_shifts',{payload},session.access_token);}
