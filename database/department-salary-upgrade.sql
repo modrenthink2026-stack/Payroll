@@ -19,6 +19,7 @@ begin
  perform 1 from public.payroll_staff where company_id=cid and id=any(ids) order by id for update;
  if (select count(*) from public.payroll_staff where company_id=cid and id=any(ids) and status='active' and department=payload->>'department')<>cardinality(ids) then raise exception 'Staff or department changed; reload the salary editor';end if;
  for j in select * from jsonb_array_elements(payload->'rows') loop
+  if j->>'salary_mode'='consolidated' then j=j||jsonb_build_object('basic',0,'da',0,'hra',0,'cca',0,'hod_allowance',0,'other',coalesce(j->>'consolidated_amount',j->>'other','0'));end if;
   foreach amount_key in array array['basic','da','hra','cca','other','hod_allowance'] loop
    if coalesce(j->>amount_key,'') !~ '^[0-9]+(\.[0-9]{1,2})?$' then raise exception 'Enter non-negative amounts with at most two decimals';end if;
   end loop;

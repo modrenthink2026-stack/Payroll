@@ -1,3 +1,4 @@
+import {salaryPayload} from './salary.js';
 import {loginEmail} from './access.js';
 import {config} from './config.js';
 import {parseRecoveryLink} from './recovery.js';
@@ -50,6 +51,7 @@ async function refresh(){
   if(exp<Date.now()/1000+60)save(await request('/auth/v1/token?grant_type=refresh_token',{refresh_token:session.refresh_token}));
 }
 export async function rpc(action,payload={}){
+  if(['staff_save','initial_salary','increment_save'].includes(action))payload=salaryPayload(payload);
   await refresh();
   const request_id=payload.request_id||crypto.randomUUID();
   return request('/rest/v1/rpc/payroll_api',{action,payload:{...payload,request_id}},session.access_token);
@@ -59,6 +61,6 @@ export async function accountAction(payload){await refresh();return request("/fu
 
 export async function assignShifts(payload){await refresh();return request('/rest/v1/rpc/payroll_assign_shifts',{payload},session.access_token);}
 
-export async function saveDepartmentSalaries(payload){await refresh();return request('/rest/v1/rpc/payroll_department_salaries',{payload},session.access_token);}
+export async function saveDepartmentSalaries(payload){payload={...payload,rows:payload.rows.map(salaryPayload)};await refresh();return request('/rest/v1/rpc/payroll_department_salaries',{payload},session.access_token);}
 
 export async function assignUsernameRole(payload){await refresh();return request('/rest/v1/rpc/payroll_username_role',{payload},session.access_token);}

@@ -146,10 +146,18 @@ revoke all on public.payroll_staff_details from public,anon,authenticated;
 grant select on public.payroll_staff_details to authenticated;
 create policy staff_details_read on public.payroll_staff_details for select to authenticated using(payroll_private.role(company_id) in ('admin','hr') or payroll_private.own(staff_id));
 
+alter table public.payroll_salaries
+ add column salary_mode text not null default 'component' check(salary_mode in ('component','consolidated')),
+ add column consolidated_amount numeric(14,2) generated always as (case when salary_mode='consolidated' then other else 0 end) stored,
+ add constraint payroll_salaries_consolidated_valid check(salary_mode<>'consolidated' or (basic=0 and da=0 and hra=0 and cca=0 and hod_allowance=0));
+alter table public.payroll_increments
+ add column salary_mode text not null default 'component' check(salary_mode in ('component','consolidated')),
+ add column consolidated_amount numeric(14,2) generated always as (case when salary_mode='consolidated' then other else 0 end) stored,
+ add constraint payroll_increments_consolidated_valid check(salary_mode<>'consolidated' or (basic=0 and da=0 and hra=0 and cca=0 and hod_allowance=0));
 create function payroll_private.calculate(cid uuid,month_start date) returns uuid language plpgsql security definer set search_path='' as $$
 declare c public.payroll_companies; s public.payroll_staff; p public.payroll_profiles; sal public.payroll_salaries; att public.payroll_attendance;
  day date; last_day date; rid uuid; ndays int; remaining int; factor numeric; units numeric; lop numeric; paid numeric;
- cca numeric; hod numeric; b numeric; da numeric; hra numeric; other numeric; gross numeric; pf numeric; esi numeric; tds numeric; deposit numeric; balance numeric; wage numeric; deductions numeric;
+ consolidated numeric; consolidated_days numeric; stat_wage numeric; cca numeric; hod numeric; b numeric; da numeric; hra numeric; other numeric; gross numeric; pf numeric; esi numeric; tds numeric; deposit numeric; balance numeric; wage numeric; deductions numeric;
  issues jsonb; lr public.payroll_leaves; is_work boolean; lrpaid boolean; late_plan jsonb;late_review public.payroll_late_reviews;late_valid boolean;late_lop numeric;
 begin
  select * into c from public.payroll_companies where id=cid for update;
@@ -166,7 +174,7 @@ begin
  else insert into public.payroll_runs(company_id,month,created_by,input_hash,snapshot) values(cid,month_start,auth.uid(),payroll_private.fingerprint(cid),to_jsonb(c)) returning id into rid;end if;
  for s in select * from public.payroll_staff where company_id=cid and joining_date<=last_day and (leaving_date is null or leaving_date>=month_start) loop
   select * into p from public.payroll_profiles where staff_id=s.id;
-  cca=0;hod=0;b=0;da=0;hra=0;other=0;lop=0;paid=0;issues='[]';
+  consolidated=0;consolidated_days=0;cca=0;hod=0;b=0;da=0;hra=0;other=0;lop=0;paid=0;issues='[]';
   late_plan=payroll_private.late_plan(s.id,month_start);
   select * into late_review from public.payroll_late_reviews where staff_id=s.id and month=month_start and status='active';
   late_valid=found and late_review.source_hash=late_plan->>'source_hash';
@@ -203,13 +211,13 @@ begin
     units=greatest(0,units-late_lop);
    end if;
    factor=units/ndays;paid=paid+units;lop=lop+(1-units);
-   b=b+sal.basic*factor;da=da+sal.da*factor;hra=hra+sal.hra*factor;other=other+sal.other*factor;cca=cca+sal.cca*factor;hod=hod+sal.hod_allowance*factor;
+   b=b+sal.basic*factor;da=da+sal.da*factor;hra=hra+sal.hra*factor;if sal.salary_mode='consolidated' then consolidated=consolidated+sal.other*factor;consolidated_days=consolidated_days+1;else other=other+sal.other*factor;end if;cca=cca+sal.cca*factor;hod=hod+sal.hod_allowance*factor;
   end loop;
-  b=round(b,2);da=round(da,2);hra=round(hra,2);other=round(other,2);cca=round(cca,2);hod=round(hod,2);gross=b+da+hra+cca+other+hod;
+  b=round(b,2);da=round(da,2);hra=round(hra,2);other=round(other,2);cca=round(cca,2);hod=round(hod,2);consolidated=round(consolidated,2);gross=b+da+hra+cca+other+hod+consolidated;
   -- Reviewed statutory wage model: Basic+DA plus exclusion add-back. Employer must confirm suitability.
-  wage=greatest(b+da,gross/2);
-  pf=case when p.pf_enabled then round(least(wage,(c.settings->>'pf_cap')::numeric)*(c.settings->>'pf_rate')::numeric/100) else 0 end;
-  esi=case when p.esi_enabled then ceil(wage*(c.settings->>'esi_rate')::numeric/100) else 0 end;
+  wage=greatest(b+da,gross/2);stat_wage=greatest(b+da,(gross-consolidated)/2);
+  pf=case when p.pf_enabled then round(least(stat_wage,(c.settings->>'pf_cap')::numeric)*(c.settings->>'pf_rate')::numeric/100) else 0 end;
+  esi=case when p.esi_enabled then ceil(stat_wage*(c.settings->>'esi_rate')::numeric/100) else 0 end;
   tds=round(greatest(0,p.annual_tax-p.tax_paid)/remaining,2);
   select coalesce(sum(amount),0) into balance from public.payroll_deposits where staff_id=s.id;
   deposit=case when p.deposit_eligible and coalesce((c.settings->>'deposit_enabled')::boolean,false) then round(least(gross*0.10,greatest(0,(c.settings->>'deposit_cap')::numeric-balance)),2) else 0 end;
@@ -217,9 +225,9 @@ begin
   if deductions>wage/2 then issues=issues||jsonb_build_array('Deductions exceed the conservative 50% reviewed-wage limit');end if;
   if deductions>gross then issues=issues||jsonb_build_array('Negative net pay');end if;
   insert into public.payroll_lines(staff_snapshot,deposit_opening,deposit_closing,company_id,run_id,staff_id,earnings,deductions,employer,gross,net,paid_days,lop,issues)
-  values(to_jsonb(s),balance,balance+deposit,cid,rid,s.id,jsonb_build_object('Basic',b,'DA',da,'HRA',hra,'CCA',cca,'Allowances',other,'HOD/Coordinator Allowances',hod),
+  values(to_jsonb(s),balance,balance+deposit,cid,rid,s.id,(case when consolidated_days=0 or b+da+hra+cca+other+hod>0 then jsonb_build_object('Basic',b,'DA',da,'HRA',hra,'CCA',cca,'Allowances',other,'HOD/Coordinator Allowances',hod) else '{}'::jsonb end)||(case when consolidated_days>0 then jsonb_build_object('Consolidated salary',consolidated) else '{}'::jsonb end),
   jsonb_build_object('PF',pf,'ESI',esi,'TDS',tds,'Security deposit',deposit,'Other deduction',coalesce(p.other_deductions,0),'PT',coalesce(p.pt,0)),
-  jsonb_build_object('PF total',case when p.pf_enabled then round(least(wage,(c.settings->>'pf_cap')::numeric)*(c.settings->>'pf_employer_rate')::numeric/100) else 0 end,'ESI',case when p.esi_enabled then ceil(wage*(c.settings->>'esi_employer_rate')::numeric/100) else 0 end),gross,gross-deductions,paid,lop,issues);
+  jsonb_build_object('PF total',case when p.pf_enabled then round(least(stat_wage,(c.settings->>'pf_cap')::numeric)*(c.settings->>'pf_employer_rate')::numeric/100) else 0 end,'ESI',case when p.esi_enabled then ceil(stat_wage*(c.settings->>'esi_employer_rate')::numeric/100) else 0 end),gross,gross-deductions,paid,lop,issues);
   update public.payroll_lines set late_summary=late_plan-'events'-'source_hash'||jsonb_build_object('review_id',late_review.id,'review_valid',late_valid,'cl_days',case when late_valid then late_review.cl_units else 0 end,'lop_days',case when late_valid then (select count(*)*0.5 from jsonb_array_elements(late_review.decisions) d where d->>'decision'='lop') else 0 end) where run_id=rid and staff_id=s.id;
  end loop;
  if not exists(select 1 from public.payroll_lines where run_id=rid) then raise exception 'Add staff and salary details first';end if;
@@ -412,6 +420,9 @@ begin
   end if;
   return out;
  end if;
+ if action in ('staff_save','initial_salary','increment_save') and payload->>'salary_mode'='consolidated' then
+  payload=payload||jsonb_build_object('basic',0,'da',0,'hra',0,'cca',0,'hod_allowance',0,'other',coalesce(payload->>'consolidated_amount',payload->>'other','0'));
+ end if;
  -- Lock company first for all writes. This serializes payroll locking with staff/leave/input edits.
  select * into c from public.payroll_companies where id=cid for update;
  if reqid is not null then
@@ -548,8 +559,8 @@ begin
    values(cid,nullif(trim(payload->>'code'),''),nullif(trim(payload->>'name'),''),nullif(lower(trim(payload->>'email')),''),coalesce(payload->>'department',''),coalesce(payload->>'designation',''),(payload->>'joining_date')::date,nullif(payload->>'biometric_id',''),nullif(payload->>'probation_end','')::date) returning id into sid;
    insert into public.payroll_profiles(staff_id,company_id) values(sid,cid);
    if r<>'hr' then
-   insert into public.payroll_salaries(company_id,staff_id,effective_from,basic,da,hra,other,cca,hod_allowance,approved_by)
-   values(cid,sid,(payload->>'joining_date')::date,(payload->>'basic')::numeric,(payload->>'da')::numeric,(payload->>'hra')::numeric,(payload->>'other')::numeric,coalesce((payload->>'cca')::numeric,0),coalesce((payload->>'hod_allowance')::numeric,0),uid);
+   insert into public.payroll_salaries(company_id,staff_id,effective_from,basic,da,hra,other,cca,hod_allowance,salary_mode,approved_by)
+   values(cid,sid,(payload->>'joining_date')::date,(payload->>'basic')::numeric,(payload->>'da')::numeric,(payload->>'hra')::numeric,(payload->>'other')::numeric,coalesce((payload->>'cca')::numeric,0),coalesce((payload->>'hod_allowance')::numeric,0),coalesce(payload->>'salary_mode','component'),uid);
    end if;
   else
    if nullif(lower(trim(payload->>'email')),'') is distinct from st.email and st.user_id is not null then raise exception 'Linked email changes require account review';end if;
@@ -578,7 +589,7 @@ begin
   if sid is null or exists(select 1 from public.payroll_salaries where staff_id=sid) then raise exception 'Initial salary already exists; use the increment workflow';end if;
   if (payload->>'effective_from')::date<st.joining_date then raise exception 'Salary cannot predate joining';end if;
   if exists(select 1 from public.payroll_runs where company_id=cid and month>=(date_trunc('month',(payload->>'effective_from')::date))::date and status in ('locked','released','paid')) then raise exception 'Payroll is locked; use a reviewed adjustment';end if;
-  insert into public.payroll_salaries(company_id,staff_id,effective_from,basic,da,hra,other,cca,hod_allowance,approved_by) values(cid,sid,(payload->>'effective_from')::date,(payload->>'basic')::numeric,(payload->>'da')::numeric,(payload->>'hra')::numeric,(payload->>'other')::numeric,coalesce((payload->>'cca')::numeric,0),coalesce((payload->>'hod_allowance')::numeric,0),uid);
+  insert into public.payroll_salaries(company_id,staff_id,effective_from,basic,da,hra,other,cca,hod_allowance,salary_mode,approved_by) values(cid,sid,(payload->>'effective_from')::date,(payload->>'basic')::numeric,(payload->>'da')::numeric,(payload->>'hra')::numeric,(payload->>'other')::numeric,coalesce((payload->>'cca')::numeric,0),coalesce((payload->>'hod_allowance')::numeric,0),coalesce(payload->>'salary_mode','component'),uid);
  elsif action='tax_inputs' then
   if r not in ('admin','accountant') then raise exception 'Accountant access required';end if;
   update public.payroll_profiles set annual_tax=(payload->>'annual_tax')::numeric,tax_paid=(payload->>'tax_paid')::numeric,other_deductions=(payload->>'other_deductions')::numeric,pt=(payload->>'pt')::numeric where staff_id=sid;
@@ -698,13 +709,13 @@ begin
   if r not in ('admin','hr') then raise exception 'HR access required';end if;
   if (payload->>'effective_from')::date<st.joining_date then raise exception 'Increment predates employment';end if;
   if exists(select 1 from public.payroll_runs where company_id=cid and month>=(date_trunc('month',(payload->>'effective_from')::date))::date and status in ('locked','released','paid')) then raise exception 'Backdated change affects locked payroll; reviewed arrears workflow is required';end if;
-  insert into public.payroll_increments(company_id,staff_id,effective_from,basic,da,hra,other,cca,hod_allowance,reason,created_by) values(cid,sid,(payload->>'effective_from')::date,(payload->>'basic')::numeric,(payload->>'da')::numeric,(payload->>'hra')::numeric,(payload->>'other')::numeric,coalesce((payload->>'cca')::numeric,0),coalesce((payload->>'hod_allowance')::numeric,0),payload->>'reason',uid) returning id into rec;
+  insert into public.payroll_increments(company_id,staff_id,effective_from,basic,da,hra,other,cca,hod_allowance,salary_mode,reason,created_by) values(cid,sid,(payload->>'effective_from')::date,(payload->>'basic')::numeric,(payload->>'da')::numeric,(payload->>'hra')::numeric,(payload->>'other')::numeric,coalesce((payload->>'cca')::numeric,0),coalesce((payload->>'hod_allowance')::numeric,0),coalesce(payload->>'salary_mode','component'),payload->>'reason',uid) returning id into rec;
  elsif action='increment_decide' then
   select * into inc from public.payroll_increments where id=rec and company_id=cid for update;if not found then raise exception 'Increment not found';end if;
   if payload->>'decision'='accountant_reviewed' and inc.status='recommended' and r in ('admin','accountant') and inc.created_by<>uid then update public.payroll_increments set status='accountant_reviewed',reviewed_by=uid where id=rec;
   elsif payload->>'decision'='approved' and inc.status='accountant_reviewed' and r='admin' then
    if exists(select 1 from public.payroll_runs where company_id=cid and month>=date_trunc('month',inc.effective_from)::date and status in ('locked','released','paid')) then raise exception 'Payroll was locked after recommendation; use reviewed arrears';end if;
-   insert into public.payroll_salaries(company_id,staff_id,effective_from,basic,da,hra,other,cca,hod_allowance,approved_by) values(cid,inc.staff_id,inc.effective_from,inc.basic,inc.da,inc.hra,inc.other,inc.cca,inc.hod_allowance,uid);
+   insert into public.payroll_salaries(company_id,staff_id,effective_from,basic,da,hra,other,cca,hod_allowance,salary_mode,approved_by) values(cid,inc.staff_id,inc.effective_from,inc.basic,inc.da,inc.hra,inc.other,inc.cca,inc.hod_allowance,inc.salary_mode,uid);
    update public.payroll_increments set status='approved',approved_by=uid where id=rec;
   elsif payload->>'decision'='rejected' and inc.status in ('recommended','accountant_reviewed') and r='admin' then update public.payroll_increments set status='rejected' where id=rec;
   else raise exception 'Requires independent accountant review followed by administrator approval';end if;
@@ -833,6 +844,7 @@ begin
  perform 1 from public.payroll_staff where company_id=cid and id=any(ids) order by id for update;
  if (select count(*) from public.payroll_staff where company_id=cid and id=any(ids) and status='active' and department=payload->>'department')<>cardinality(ids) then raise exception 'Staff or department changed; reload the salary editor';end if;
  for j in select * from jsonb_array_elements(payload->'rows') loop
+  if j->>'salary_mode'='consolidated' then j=j||jsonb_build_object('basic',0,'da',0,'hra',0,'cca',0,'hod_allowance',0,'other',coalesce(j->>'consolidated_amount',j->>'other','0'));end if;
   foreach amount_key in array array['basic','da','hra','cca','other','hod_allowance'] loop
    if coalesce(j->>amount_key,'') !~ '^[0-9]+(\.[0-9]{1,2})?$' then raise exception 'Enter non-negative amounts with at most two decimals';end if;
   end loop;
