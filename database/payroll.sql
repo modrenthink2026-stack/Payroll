@@ -43,6 +43,48 @@ create function payroll_private.role(cid uuid) returns text language sql stable 
 $$;
 create function payroll_private.own(sid uuid) returns boolean language sql stable security definer set search_path='' as $$select exists(select 1 from public.payroll_staff where id=sid and user_id=auth.uid() and status='active' and payroll_private.role(company_id) is not null)$$;
 create function payroll_private.team(sid uuid) returns boolean language sql stable security definer set search_path='' as $$select exists(select 1 from public.payroll_staff where id=sid and manager_user_id=auth.uid())$$;
+-- Monthly whole-incident late allowance, with explicit Principal / HR decisions.
+alter table public.payroll_attendance add column raw_late_minutes int check(raw_late_minutes>=0);
+alter table public.payroll_lines add column late_summary jsonb not null default '{}';
+create table public.payroll_late_reviews(
+ id uuid primary key default gen_random_uuid(), company_id uuid not null,staff_id uuid not null,month date not null check(month=date_trunc('month',month)::date),
+ source_hash text not null,plan jsonb not null,decisions jsonb not null check(jsonb_typeof(decisions)='array'),cl_units numeric not null check(cl_units>=0),
+ status text not null default 'active' check(status in ('active','reopened')),reason text not null,
+ reviewed_by uuid not null references auth.users,reviewed_at timestamptz not null default now(),reopened_by uuid references auth.users,reopened_at timestamptz,reopen_reason text,
+ foreign key(company_id,staff_id) references public.payroll_staff(company_id,id)
+);
+create unique index payroll_late_active_idx on public.payroll_late_reviews(company_id,staff_id,month) where status='active';
+alter table public.payroll_late_reviews enable row level security;
+revoke all on public.payroll_late_reviews from public,anon,authenticated;
+grant select on public.payroll_late_reviews to authenticated;
+create function payroll_private.late_plan(sid uuid,m date) returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare s public.payroll_staff;c public.payroll_companies;a record;remaining int=25;used int=0;total int=0;uncovered int=0;events jsonb='[]';h text;
+begin
+ if m is null or m<>date_trunc('month',m)::date then raise exception 'Select a payroll month';end if;
+ select * into s from public.payroll_staff where id=sid;if not found then raise exception 'Staff not found';end if;
+ select * into c from public.payroll_companies where id=s.company_id;
+ for a in select at.id,at.work_date,to_char(at.in_time,'HH24:MI') as in_time,coalesce(left(at.shift_snapshot->>'start',5),to_char(s.shift_start,'HH24:MI')) as reporting_time,coalesce(at.raw_late_minutes,at.late_minutes) as mins from public.payroll_attendance at
+ where at.staff_id=sid and at.work_date>=m and at.work_date<(m+interval '1 month')::date
+ and at.work_date>=s.joining_date and at.work_date<=coalesce(s.leaving_date,'infinity'::date) and at.status='present'
+ and coalesce(at.raw_late_minutes,at.late_minutes)>0
+ and c.settings->'working_days' @> jsonb_build_array(extract(isodow from at.work_date)::int)
+ and not c.settings->'holidays' @> jsonb_build_array(at.work_date::text)
+ and not exists(select 1 from public.payroll_leaves l where l.staff_id=sid and l.status='approved' and at.work_date between l.from_date and l.to_date)
+ order by coalesce(at.raw_late_minutes,at.late_minutes),at.work_date,at.id loop
+  total=total+a.mins;
+  if a.mins<=remaining then remaining=remaining-a.mins;used=used+a.mins;
+   events=events||jsonb_build_array(jsonb_build_object('attendance_id',a.id,'date',a.work_date,'day',trim(to_char(a.work_date,'Day')),'reporting_time',a.reporting_time,'in_time',a.in_time,'minutes',a.mins,'cumulative_minutes',total,'covered',true));
+  else uncovered=uncovered+a.mins;
+   events=events||jsonb_build_array(jsonb_build_object('attendance_id',a.id,'date',a.work_date,'day',trim(to_char(a.work_date,'Day')),'reporting_time',a.reporting_time,'in_time',a.in_time,'minutes',a.mins,'cumulative_minutes',total,'covered',false));
+  end if;
+ end loop;
+ h=md5(jsonb_build_array(m,25,s.id,s.joining_date,s.leaving_date,c.settings->'working_days',c.settings->'holidays',
+ (select jsonb_agg(to_jsonb(at) order by at.work_date,at.id) from public.payroll_attendance at where at.staff_id=sid and at.work_date>=m and at.work_date<(m+interval '1 month')::date),
+ (select jsonb_agg(jsonb_build_array(l.id,l.from_date,l.to_date,l.half_day,l.leave_type) order by l.id) from public.payroll_leaves l where l.staff_id=sid and l.status='approved' and l.to_date>=m and l.from_date<(m+interval '1 month')::date))::text);
+ return jsonb_build_object('month',m,'allowance',25,'total_minutes',total,'used_minutes',used,'unused_minutes',remaining,'net_excess_minutes',greatest(0,total-25),'uncovered_minutes',uncovered,'events',events,'source_hash',h);
+end$$;
+revoke all on function payroll_private.late_plan(uuid,date) from public,anon,authenticated;
+
 create function payroll_private.fingerprint(cid uuid) returns text language sql stable security definer set search_path='' as $$
  select md5(jsonb_build_array(
  (select to_jsonb(c) from public.payroll_companies c where id=cid),
@@ -52,7 +94,8 @@ create function payroll_private.fingerprint(cid uuid) returns text language sql 
  (select jsonb_agg(a order by id) from public.payroll_attendance a where company_id=cid),
  (select jsonb_agg(l order by id) from public.payroll_leaves l where company_id=cid),
  (select jsonb_agg(d order by id) from public.payroll_deposits d where company_id=cid),
- (select jsonb_agg(p order by code) from public.payroll_leave_policies p where company_id=cid))::text)
+ (select jsonb_agg(p order by code) from public.payroll_leave_policies p where company_id=cid),
+ (select jsonb_agg(l order by id) from public.payroll_late_reviews l where company_id=cid))::text)
 $$;
 
 do $$declare t text;begin
@@ -96,7 +139,7 @@ create function payroll_private.calculate(cid uuid,month_start date) returns uui
 declare c public.payroll_companies; s public.payroll_staff; p public.payroll_profiles; sal public.payroll_salaries; att public.payroll_attendance;
  day date; last_day date; rid uuid; ndays int; remaining int; factor numeric; units numeric; lop numeric; paid numeric;
  b numeric; da numeric; hra numeric; other numeric; gross numeric; pf numeric; esi numeric; tds numeric; deposit numeric; balance numeric; wage numeric; deductions numeric;
- issues jsonb; lr public.payroll_leaves; is_work boolean; lrpaid boolean;
+ issues jsonb; lr public.payroll_leaves; is_work boolean; lrpaid boolean; late_plan jsonb;late_review public.payroll_late_reviews;late_valid boolean;late_lop numeric;
 begin
  select * into c from public.payroll_companies where id=cid for update;
  if not coalesce((c.settings->>'statutory_reviewed')::boolean,false) then raise exception 'Accountant must review statutory settings before payroll calculation';end if;
@@ -113,6 +156,11 @@ begin
  for s in select * from public.payroll_staff where company_id=cid and joining_date<=last_day and (leaving_date is null or leaving_date>=month_start) loop
   select * into p from public.payroll_profiles where staff_id=s.id;
   b=0;da=0;hra=0;other=0;lop=0;paid=0;issues='[]';
+  late_plan=payroll_private.late_plan(s.id,month_start);
+  select * into late_review from public.payroll_late_reviews where staff_id=s.id and month=month_start and status='active';
+  late_valid=found and late_review.source_hash=late_plan->>'source_hash';
+  if late_review.id is not null and not late_valid then issues=issues||jsonb_build_array('Late review inputs changed; reopen and review this month');
+  elsif not late_valid and exists(select 1 from jsonb_array_elements(late_plan->'events') e where not (e->>'covered')::boolean) then issues=issues||jsonb_build_array('Principal / HR monthly late decision required');end if;
   for day in select generate_series(greatest(month_start,s.joining_date),least(last_day,coalesce(s.leaving_date,last_day)),interval '1 day')::date loop
    select * into sal from public.payroll_salaries where staff_id=s.id and effective_from<=day order by effective_from desc limit 1;
    if not found then issues=issues||jsonb_build_array('No salary version for '||day);continue;end if;
@@ -139,6 +187,10 @@ begin
     elsif att.status='absent' then units=0;
     elsif att.status='half_day' then units=0.5;end if;
    end if;
+   if late_valid then
+    select coalesce(sum(0.5),0) into late_lop from jsonb_array_elements(late_review.decisions) d join public.payroll_attendance a on a.id=(d->>'attendance_id')::uuid where a.work_date=day and d->>'decision'='lop';
+    units=greatest(0,units-late_lop);
+   end if;
    factor=units/ndays;paid=paid+units;lop=lop+(1-units);
    b=b+sal.basic*factor;da=da+sal.da*factor;hra=hra+sal.hra*factor;other=other+sal.other*factor;
   end loop;
@@ -157,6 +209,7 @@ begin
   values(to_jsonb(s),balance,balance+deposit,cid,rid,s.id,jsonb_build_object('Basic',b,'DA',da,'HRA',hra,'Other allowance',other),
   jsonb_build_object('PF',pf,'ESI',esi,'TDS',tds,'Security deposit',deposit,'Other deduction',coalesce(p.other_deductions,0),'PT',coalesce(p.pt,0)),
   jsonb_build_object('PF total',case when p.pf_enabled then round(least(wage,(c.settings->>'pf_cap')::numeric)*(c.settings->>'pf_employer_rate')::numeric/100) else 0 end,'ESI',case when p.esi_enabled then ceil(wage*(c.settings->>'esi_employer_rate')::numeric/100) else 0 end),gross,gross-deductions,paid,lop,issues);
+  update public.payroll_lines set late_summary=late_plan-'events'-'source_hash'||jsonb_build_object('review_id',late_review.id,'review_valid',late_valid,'cl_days',case when late_valid then late_review.cl_units else 0 end,'lop_days',case when late_valid then (select count(*)*0.5 from jsonb_array_elements(late_review.decisions) d where d->>'decision'='lop') else 0 end) where run_id=rid and staff_id=s.id;
  end loop;
  if not exists(select 1 from public.payroll_lines where run_id=rid) then raise exception 'Add staff and salary details first';end if;
  return rid;
@@ -200,9 +253,17 @@ grant execute on function payroll_private.leave_can_decide(uuid) to authenticate
 drop policy leaves_read on public.payroll_leaves;
 create policy leaves_read on public.payroll_leaves for select to authenticated using(payroll_private.role(company_id) in ('admin','hr','accountant') or payroll_private.own(staff_id) or payroll_private.leave_can_decide(id));
 
+create function payroll_private.late_can_review(sid uuid) returns boolean language sql stable security definer set search_path='' as $$
+ select exists(select 1 from public.payroll_staff s where s.id=sid and s.user_id is distinct from auth.uid()
+ and payroll_private.role(s.company_id) is not null and exists(select 1 from public.payroll_leave_approvers a where a.company_id=s.company_id and a.office in ('principal','hr') and a.user_id=auth.uid()))
+$$;
+revoke all on function payroll_private.late_can_review(uuid) from public,anon,authenticated;
+grant execute on function payroll_private.late_can_review(uuid) to authenticated;
+create policy late_reviews_read on public.payroll_late_reviews for select to authenticated using(payroll_private.role(company_id) in ('admin','hr','accountant') or payroll_private.own(staff_id) or payroll_private.late_can_review(staff_id));
+
 create function payroll_private.dispatch(action text,payload jsonb) returns jsonb language plpgsql security definer set search_path='' as $$
 declare uid uuid=auth.uid(); cid uuid=nullif(payload->>'company_id','')::uuid; r text; sid uuid=nullif(payload->>'staff_id','')::uuid; rec uuid=nullif(payload->>'id','')::uuid;
- c public.payroll_companies; st public.payroll_staff; le public.payroll_leaves; doc public.payroll_documents; inc public.payroll_increments; run public.payroll_runs;
+ c public.payroll_companies; st public.payroll_staff; le public.payroll_leaves; late_review public.payroll_late_reviews; late_plan jsonb; m date; cl_days numeric; doc public.payroll_documents; inc public.payroll_increments; run public.payroll_runs;
  v_email text; target_uid uuid; reqid uuid=nullif(payload->>'request_id','')::uuid; j jsonb; day date; units numeric; reserved numeric; balance numeric; paid_type boolean; out jsonb; score numeric;
 begin
  if uid is null then raise exception 'Authentication required';end if;
@@ -224,6 +285,10 @@ begin
  end if;
  r=payroll_private.role(cid);
  if r is null then raise exception 'No access to this company';end if;
+ if action='late_month' then
+  m=(payload->>'month')::date;if m is null or m<>date_trunc('month',m)::date then raise exception 'Select a month';end if;
+  return coalesce((select jsonb_agg(jsonb_build_object('staff_id',s.id,'code',s.code,'name',s.name,'can_review',payroll_private.late_can_review(s.id),'plan',payroll_private.late_plan(s.id,m),'review',(select to_jsonb(l) from public.payroll_late_reviews l where l.staff_id=s.id and l.month=m and l.status='active')) order by s.code) from public.payroll_staff s where s.company_id=cid and s.joining_date<(m+interval '1 month')::date and coalesce(s.leaving_date,'infinity'::date)>=m and (r in ('admin','hr','accountant') or payroll_private.own(s.id) or payroll_private.late_can_review(s.id))),'[]'::jsonb);
+ end if;
  if action='attendance_report' then
   return coalesce((select jsonb_agg(a order by work_date,staff_id) from public.payroll_attendance a where company_id=cid and work_date>=date_trunc('month',(payload->>'month')::date)::date and work_date<(date_trunc('month',(payload->>'month')::date)+interval '1 month')::date and (r in ('admin','hr','accountant') or payroll_private.own(staff_id) or (r='manager' and payroll_private.team(staff_id)))),'[]'::jsonb);
  end if;
@@ -256,7 +321,42 @@ begin
   if exists(select 1 from payroll_private.requests where token=reqid) then raise exception 'Request ID collision';end if;
  end if;
  if sid is not null then select * into st from public.payroll_staff where id=sid and company_id=cid for update;if not found then raise exception 'Staff not found in this company';end if;end if;
- if action='leave_approver_set' then
+ if action in ('late_review','late_reopen') then
+  if sid is null or not payroll_private.late_can_review(sid) then raise exception 'Assigned Principal / HR approval required; self-review is forbidden';end if;
+  m=(payload->>'month')::date;if m is null or m<>date_trunc('month',m)::date then raise exception 'Select a month';end if;
+  if length(trim(coalesce(payload->>'reason','')))<3 then raise exception 'Enter a review reason';end if;
+  if exists(select 1 from public.payroll_runs where company_id=cid and month=m and status in ('locked','released','paid')) then raise exception 'Payroll month is locked; use the adjustment process';end if;
+  select * into late_review from public.payroll_late_reviews where staff_id=sid and month=m and status='active' for update;
+  if action='late_reopen' then
+   if late_review.id is null then raise exception 'No active late review to reopen';end if;
+   if late_review.cl_units>0 then
+    update public.payroll_staff set leave_balances=jsonb_set(leave_balances,array['CL'],to_jsonb(coalesce((leave_balances->>'CL')::numeric,0)+late_review.cl_units)) where id=sid;
+    insert into public.payroll_leave_ledger(company_id,staff_id,leave_type,units,reason,event) values(cid,sid,'CL',late_review.cl_units,'Reopened late review '||late_review.id,'late_cl_refund');
+   end if;
+   update public.payroll_late_reviews set status='reopened',reopened_by=uid,reopened_at=now(),reopen_reason=trim(payload->>'reason') where id=late_review.id;rec=late_review.id;
+  else
+   if late_review.id is not null then raise exception 'Reopen the existing late review before changing decisions';end if;
+   late_plan=payroll_private.late_plan(sid,m);
+   if payload->>'source_hash' is distinct from late_plan->>'source_hash' then raise exception 'Attendance or leave changed; reload the monthly late report';end if;
+   if jsonb_typeof(payload->'decisions') is distinct from 'array' then raise exception 'Review every uncovered late arrival';end if;
+   if jsonb_array_length(payload->'decisions')<>(select count(*) from jsonb_array_elements(late_plan->'events') e where not (e->>'covered')::boolean) or jsonb_array_length(payload->'decisions')=0 then raise exception 'Review every uncovered late arrival exactly once';end if;
+   if (select count(distinct d->>'attendance_id') from jsonb_array_elements(payload->'decisions') d)<>jsonb_array_length(payload->'decisions') then raise exception 'Duplicate late decision';end if;
+   for j in select * from jsonb_array_elements(payload->'decisions') loop
+    if coalesce(j->>'decision','') not in ('lop','cl') or not exists(select 1 from jsonb_array_elements(late_plan->'events') e where e->>'attendance_id'=j->>'attendance_id' and not (e->>'covered')::boolean) then raise exception 'Invalid late decision';end if;
+   end loop;
+   select count(*)*0.5 into cl_days from jsonb_array_elements(payload->'decisions') d where d->>'decision'='cl';
+   if cl_days>0 then
+    if not exists(select 1 from public.payroll_leave_policies where company_id=cid and code='CL' and paid) then raise exception 'A paid CL policy is required';end if;
+    select coalesce(sum(l.units),0) into reserved from public.payroll_leaves l where l.staff_id=sid and l.leave_type='CL' and l.status='submitted';
+    if coalesce((st.leave_balances->>'CL')::numeric,0)-reserved<cl_days then raise exception 'Insufficient unreserved Casual Leave balance';end if;
+   end if;
+   insert into public.payroll_late_reviews(company_id,staff_id,month,source_hash,plan,decisions,cl_units,reason,reviewed_by) values(cid,sid,m,late_plan->>'source_hash',late_plan,payload->'decisions',cl_days,trim(payload->>'reason'),uid) returning id into rec;
+   if cl_days>0 then
+    update public.payroll_staff set leave_balances=jsonb_set(leave_balances,array['CL'],to_jsonb(coalesce((leave_balances->>'CL')::numeric,0)-cl_days)) where id=sid;
+    insert into public.payroll_leave_ledger(company_id,staff_id,leave_type,units,reason,event) values(cid,sid,'CL',-cl_days,'Late review '||rec,'late_cl_debit');
+   end if;
+  end if;
+ elsif action='leave_approver_set' then
   if r<>'admin' then raise exception 'Administrator access required';end if;
   if coalesce(payload->>'office','') not in ('principal','director','president','hr') then raise exception 'Choose a valid approval office';end if;
   target_uid=null;
@@ -376,15 +476,18 @@ begin
   if (payload->>'to_date')::date<(payload->>'from_date')::date or (payload->>'to_date')::date-(payload->>'from_date')::date>31 then raise exception 'Choose at most 32 days';end if;
   for day in select generate_series((payload->>'from_date')::date,(payload->>'to_date')::date,interval '1 day')::date loop
    if day<st.joining_date or day>coalesce(st.leaving_date,'infinity'::date) then raise exception 'Attendance falls outside employment dates';end if;
+   if exists(select 1 from public.payroll_late_reviews where staff_id=sid and month=date_trunc('month',day)::date and status='active') then raise exception 'Reopen this staff monthly late review before editing attendance';end if;
    if exists(select 1 from public.payroll_runs where company_id=cid and month=date_trunc('month',day)::date and status in ('locked','released','paid')) then raise exception 'Payroll month is locked; use a reviewed adjustment';end if;
    insert into public.payroll_attendance(company_id,staff_id,work_date,status,in_time,out_time,late_minutes,early_minutes,note,reviewed_by)
    values(cid,sid,day,payload->>'status',nullif(payload->>'in_time','')::time,nullif(payload->>'out_time','')::time,coalesce((payload->>'late_minutes')::int,0),coalesce((payload->>'early_minutes')::int,0),coalesce(payload->>'note',''),uid)
    on conflict(staff_id,work_date) do update set status=excluded.status,in_time=excluded.in_time,out_time=excluded.out_time,late_minutes=excluded.late_minutes,early_minutes=excluded.early_minutes,note=excluded.note,reviewed_by=uid;
+   update public.payroll_attendance set raw_late_minutes=coalesce((payload->>'late_minutes')::int,0) where staff_id=sid and work_date=day;
    if coalesce((payload->>'calculate_shift')::boolean,false) then
     if nullif(payload->>'in_time','') is null or nullif(payload->>'out_time','') is null then raise exception 'In and out times are required for shift calculation';end if;
     if (day+((payload->>'out_time')::time)+case when coalesce((payload->>'out_next_day')::boolean,false) then interval '1 day' else interval '0 day' end) <= (day+((payload->>'in_time')::time)) then raise exception 'Out time must be after in time; select next-day out for overnight work';end if;
     update public.payroll_attendance set
      late_minutes=greatest(0,floor(extract(epoch from ((payload->>'in_time')::time-st.shift_start))/60)::int-st.late_grace),
+     raw_late_minutes=greatest(0,floor(extract(epoch from ((payload->>'in_time')::time-st.shift_start))/60)::int),
      early_minutes=greatest(0,floor(extract(epoch from ((day+st.shift_end+case when st.shift_end<st.shift_start then interval '1 day' else interval '0 day' end)-(day+(payload->>'out_time')::time+case when coalesce((payload->>'out_next_day')::boolean,false) then interval '1 day' else interval '0 day' end)))/60)::int-st.early_grace),
      shift_snapshot=jsonb_build_object('name',st.shift_name,'start',st.shift_start,'end',st.shift_end,'break_minutes',st.break_minutes,'late_grace',st.late_grace,'early_grace',st.early_grace,'out_next_day',coalesce((payload->>'out_next_day')::boolean,false)) where staff_id=sid and work_date=day;
    else
@@ -535,7 +638,7 @@ begin
 end$$;
 
 revoke all on all functions in schema payroll_private from public,anon,authenticated;
-grant execute on function payroll_private.role(uuid),payroll_private.own(uuid),payroll_private.team(uuid),payroll_private.leave_can_decide(uuid),payroll_private.dispatch(text,jsonb) to authenticated;
+grant execute on function payroll_private.role(uuid),payroll_private.own(uuid),payroll_private.team(uuid),payroll_private.leave_can_decide(uuid),payroll_private.late_can_review(uuid),payroll_private.dispatch(text,jsonb) to authenticated;
 create function public.payroll_api(action text,payload jsonb default '{}') returns jsonb language sql security invoker set search_path='' as $$select payroll_private.dispatch(action,payload)$$;
 revoke all on function public.payroll_api(text,jsonb) from public,anon;
 grant execute on function public.payroll_api(text,jsonb) to authenticated;
