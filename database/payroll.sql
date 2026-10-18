@@ -162,6 +162,44 @@ begin
  return rid;
 end$$;
 
+-- Company-scoped leave approval offices. No payroll role is granted by a title.
+alter table public.payroll_staff add column leave_group text check(leave_group in ('teacher_staff','principal','director','support','president'));
+alter table public.payroll_leaves add column approval_office text check(approval_office in ('principal','director','president','hr'));
+create table public.payroll_leave_approvers(
+ company_id uuid not null references public.payroll_companies,
+ office text not null check(office in ('principal','director','president','hr')),
+ user_id uuid, updated_by uuid references auth.users, updated_at timestamptz not null default now(),
+ primary key(company_id,office),foreign key(company_id,user_id) references public.payroll_members(company_id,user_id)
+);
+alter table public.payroll_leave_approvers enable row level security;
+revoke all on public.payroll_leave_approvers from public,anon,authenticated;
+grant select on public.payroll_leave_approvers to authenticated;
+create policy leave_approvers_read on public.payroll_leave_approvers for select to authenticated using(payroll_private.role(company_id)='admin');
+create index payroll_leave_approvers_user_idx on public.payroll_leave_approvers(user_id);
+create function payroll_private.leave_group(explicit_group text,designation text,department text,category text) returns text language sql immutable set search_path='' as $$
+ select coalesce(explicit_group,case
+ when lower(trim(designation))='principal' then 'principal'
+ when lower(trim(designation))='director' then 'director'
+ when lower(trim(designation))='president' then 'president'
+ when lower(concat_ws(' ',designation,department,category)) ~ '(^|[^a-z])(sub[ -]?staff|aayahs?|ayahs?|aayas?|aayas|attenders?|attendants?|security|securty|watchman|watchmen)([^a-z]|$)' then 'support'
+ else 'teacher_staff' end)
+$$;
+create function payroll_private.leave_office(sid uuid) returns text language sql stable security definer set search_path='' as $$
+ select case payroll_private.leave_group(s.leave_group,s.designation,s.department,s.employment_category)
+ when 'teacher_staff' then 'principal' when 'principal' then 'director' when 'director' then 'president' when 'support' then 'hr' end
+ from public.payroll_staff s where s.id=sid
+$$;
+create function payroll_private.leave_can_decide(lid uuid) returns boolean language sql stable security definer set search_path='' as $$
+ select exists(select 1 from public.payroll_leaves l join public.payroll_staff s on s.id=l.staff_id
+ join public.payroll_leave_approvers a on a.company_id=l.company_id and a.office=coalesce(l.approval_office,payroll_private.leave_office(l.staff_id))
+ where l.id=lid and a.user_id=auth.uid() and payroll_private.role(l.company_id) is not null
+ and l.created_by is distinct from auth.uid() and s.user_id is distinct from auth.uid() and s.status='active')
+$$;
+revoke all on function payroll_private.leave_group(text,text,text,text),payroll_private.leave_office(uuid),payroll_private.leave_can_decide(uuid) from public,anon,authenticated;
+grant execute on function payroll_private.leave_can_decide(uuid) to authenticated;
+drop policy leaves_read on public.payroll_leaves;
+create policy leaves_read on public.payroll_leaves for select to authenticated using(payroll_private.role(company_id) in ('admin','hr','accountant') or payroll_private.own(staff_id) or payroll_private.leave_can_decide(id));
+
 create function payroll_private.dispatch(action text,payload jsonb) returns jsonb language plpgsql security definer set search_path='' as $$
 declare uid uuid=auth.uid(); cid uuid=nullif(payload->>'company_id','')::uuid; r text; sid uuid=nullif(payload->>'staff_id','')::uuid; rec uuid=nullif(payload->>'id','')::uuid;
  c public.payroll_companies; st public.payroll_staff; le public.payroll_leaves; doc public.payroll_documents; inc public.payroll_increments; run public.payroll_runs;
@@ -198,7 +236,8 @@ begin
    'attendance',coalesce((select jsonb_agg(a) from (select * from public.payroll_attendance where company_id=cid and (r in ('admin','hr','accountant') or payroll_private.own(staff_id) or (r='manager' and payroll_private.team(staff_id))) order by work_date desc,id limit 2000)a),'[]'::jsonb),
    'punches',coalesce((select jsonb_agg(p) from (select * from public.payroll_punches where company_id=cid and (r in ('admin','hr','accountant') or payroll_private.own(staff_id)) order by event_time desc limit 500) p),'[]'::jsonb),
    'policies',coalesce((select jsonb_agg(p) from public.payroll_leave_policies p where company_id=cid),'[]'::jsonb),
-   'leaves',coalesce((select jsonb_agg(l order by created_at desc) from public.payroll_leaves l where company_id=cid and (r in ('admin','hr','accountant') or payroll_private.own(staff_id) or (r='manager' and payroll_private.team(staff_id)))),'[]'::jsonb),
+   'leave_routing',jsonb_build_object('offices',coalesce((select jsonb_agg(jsonb_build_object('office',a.office,'ready',a.user_id is not null and payroll_private.role(cid) is not null and exists(select 1 from public.payroll_members m where m.company_id=cid and m.user_id=a.user_id and not exists(select 1 from public.payroll_staff s where s.company_id=cid and s.user_id=a.user_id and s.status='separated') and (m.role<>'staff' or exists(select 1 from public.payroll_staff s where s.company_id=cid and s.user_id=a.user_id and s.status='active'))))) from public.payroll_leave_approvers a where a.company_id=cid),'[]'::jsonb),'approvers',case when r='admin' then coalesce((select jsonb_agg(jsonb_build_object('office',a.office,'email',u.email)) from public.payroll_leave_approvers a left join auth.users u on u.id=a.user_id where a.company_id=cid),'[]'::jsonb) else '[]'::jsonb end),
+   'leaves',coalesce((select jsonb_agg(to_jsonb(l)||jsonb_build_object('staff_name',(select s.name from public.payroll_staff s where s.id=l.staff_id),'approval_office',coalesce(l.approval_office,payroll_private.leave_office(l.staff_id)),'can_decide',payroll_private.leave_can_decide(l.id)) order by created_at desc) from public.payroll_leaves l where company_id=cid and (r in ('admin','hr','accountant') or payroll_private.own(staff_id) or payroll_private.leave_can_decide(id))),'[]'::jsonb),
    'documents',coalesce((select jsonb_agg(d order by created_at desc) from public.payroll_documents d where company_id=cid and (r in ('admin','hr') or (payroll_private.own(staff_id) and status in ('issued','acknowledged')))),'[]'::jsonb),
    'assessments',coalesce((select jsonb_agg(a order by created_at desc) from public.payroll_assessments a where company_id=cid and (r in ('admin','hr') or payroll_private.own(staff_id) or (r='manager' and payroll_private.team(staff_id)))),'[]'::jsonb),
    'increments',coalesce((select jsonb_agg(i) from public.payroll_increments i where company_id=cid and (r in ('admin','hr','accountant') or (payroll_private.own(staff_id) and status='approved'))),'[]'::jsonb),
@@ -217,7 +256,25 @@ begin
   if exists(select 1 from payroll_private.requests where token=reqid) then raise exception 'Request ID collision';end if;
  end if;
  if sid is not null then select * into st from public.payroll_staff where id=sid and company_id=cid for update;if not found then raise exception 'Staff not found in this company';end if;end if;
- if action='settings' then
+ if action='leave_approver_set' then
+  if r<>'admin' then raise exception 'Administrator access required';end if;
+  if coalesce(payload->>'office','') not in ('principal','director','president','hr') then raise exception 'Choose a valid approval office';end if;
+  target_uid=null;
+  if nullif(trim(payload->>'email'),'') is not null then
+   select u.id into target_uid from auth.users u join public.payroll_members m on m.user_id=u.id and m.company_id=cid
+   where lower(u.email)=lower(trim(payload->>'email')) and u.email_confirmed_at is not null
+   and not exists(select 1 from public.payroll_staff s where s.company_id=cid and s.user_id=u.id and s.status='separated')
+   and (m.role<>'staff' or exists(select 1 from public.payroll_staff s where s.company_id=cid and s.user_id=u.id and s.status='active'));
+   if target_uid is null then raise exception 'Approver needs a confirmed, active account in this company';end if;
+  end if;
+  insert into public.payroll_leave_approvers(company_id,office,user_id,updated_by) values(cid,payload->>'office',target_uid,uid)
+  on conflict(company_id,office) do update set user_id=excluded.user_id,updated_by=excluded.updated_by,updated_at=now();
+ elsif action='leave_group_set' then
+  if r not in ('admin','hr') then raise exception 'HR access required';end if;
+  if sid is null then raise exception 'Choose a staff member';end if;
+  if coalesce(payload->>'leave_group','') not in ('auto','teacher_staff','principal','director','support','president') then raise exception 'Choose a valid leave group';end if;
+  update public.payroll_staff set leave_group=nullif(payload->>'leave_group','auto') where id=sid;
+ elsif action='settings' then
   if r<>'admin' then raise exception 'Administrator access required';end if;
   j=payload->'settings';
   if not j ?& array['working_days','holidays','pf_rate','pf_employer_rate','pf_cap','esi_rate','esi_employer_rate','effective_from','deposit_cap','deposit_enabled','statutory_reviewed'] then raise exception 'Missing required policy settings';end if;
@@ -347,6 +404,14 @@ begin
   out=jsonb_build_object('inserted',units);
  elsif action='leave_apply' then
   if not payroll_private.own(sid) then raise exception 'Apply leave through your own staff login';end if;
+  v_email=payroll_private.leave_office(sid);
+  if v_email is null then raise exception 'No leave approval policy for this staff group; contact HR';end if;
+  select a.user_id into target_uid from public.payroll_leave_approvers a join public.payroll_members m on m.company_id=a.company_id and m.user_id=a.user_id
+  where a.company_id=cid and a.office=v_email
+  and not exists(select 1 from public.payroll_staff s where s.company_id=cid and s.user_id=a.user_id and s.status='separated')
+  and (m.role<>'staff' or exists(select 1 from public.payroll_staff s where s.company_id=cid and s.user_id=a.user_id and s.status='active'));
+  if target_uid is null then raise exception 'The % approver is not configured or inactive; contact your administrator',v_email;end if;
+  if target_uid=uid then raise exception 'Self-approval route is not allowed; ask administrator to correct the approver';end if;
   if length(trim(payload->>'reason'))<3 then raise exception 'Enter a reason';end if;
   if (payload->>'to_date')::date<(payload->>'from_date')::date or (payload->>'to_date')::date-(payload->>'from_date')::date>366 then raise exception 'Invalid leave dates';end if;
   if (payload->>'from_date')::date<st.joining_date or (payload->>'to_date')::date>coalesce(st.leaving_date,'infinity'::date) then raise exception 'Leave falls outside employment';end if;
@@ -359,11 +424,11 @@ begin
   if not found then raise exception 'Leave type not found';end if;
   select coalesce(sum(l.units),0) into reserved from public.payroll_leaves l where staff_id=sid and status='submitted' and leave_type=payload->>'leave_type';
   if paid_type and units+reserved>coalesce((st.leave_balances->>(payload->>'leave_type'))::numeric,0) then raise exception 'Insufficient available leave balance';end if;
-  insert into public.payroll_leaves(company_id,staff_id,leave_type,from_date,to_date,half_day,units,reason,created_by) values(cid,sid,payload->>'leave_type',(payload->>'from_date')::date,(payload->>'to_date')::date,(payload->>'half_day')::boolean,units,payload->>'reason',uid) returning id into rec;
+  insert into public.payroll_leaves(company_id,staff_id,leave_type,from_date,to_date,half_day,units,reason,created_by,approval_office) values(cid,sid,payload->>'leave_type',(payload->>'from_date')::date,(payload->>'to_date')::date,(payload->>'half_day')::boolean,units,payload->>'reason',uid,v_email) returning id into rec;
  elsif action='leave_decide' then
   select * into le from public.payroll_leaves where id=rec and company_id=cid for update;if not found then raise exception 'Leave request not found';end if;
   select * into st from public.payroll_staff where id=le.staff_id for update;
-  if r not in ('admin','hr') and not (r='manager' and payroll_private.team(le.staff_id)) then raise exception 'Leave approval access required';end if;
+  if not payroll_private.leave_can_decide(rec) then raise exception 'Only the assigned company approval office can decide this leave';end if;
   if le.created_by=uid then raise exception 'You cannot approve your own leave';end if;
   if exists(select 1 from public.payroll_runs where company_id=cid and month between date_trunc('month',le.from_date)::date and date_trunc('month',le.to_date)::date and status in ('locked','released','paid')) then raise exception 'Affected payroll is locked; use adjustment process';end if;
   if payload->>'decision'='cancelled' then
@@ -470,7 +535,7 @@ begin
 end$$;
 
 revoke all on all functions in schema payroll_private from public,anon,authenticated;
-grant execute on function payroll_private.role(uuid),payroll_private.own(uuid),payroll_private.team(uuid),payroll_private.dispatch(text,jsonb) to authenticated;
+grant execute on function payroll_private.role(uuid),payroll_private.own(uuid),payroll_private.team(uuid),payroll_private.leave_can_decide(uuid),payroll_private.dispatch(text,jsonb) to authenticated;
 create function public.payroll_api(action text,payload jsonb default '{}') returns jsonb language sql security invoker set search_path='' as $$select payroll_private.dispatch(action,payload)$$;
 revoke all on function public.payroll_api(text,jsonb) from public,anon;
 grant execute on function public.payroll_api(text,jsonb) to authenticated;

@@ -9,6 +9,8 @@ begin
  perform set_config('request.jwt.claims',jsonb_build_object('sub',owner_id,'role','authenticated')::text,true);
  cid=(public.payroll_api('company_create','{"name":"QA transaction only"}')->>'id')::uuid;
  othercid=(public.payroll_api('company_create','{"name":"QA second tenant"}')->>'id')::uuid;
+ -- Explicitly configure the synthetic approval office; admin status alone is insufficient.
+ insert into public.payroll_leave_approvers(company_id,office,user_id,updated_by) values(cid,'principal',owner_id,owner_id);
  insert into public.payroll_members values(cid,reviewer,'accountant');
  sid=(public.payroll_api('staff_save',jsonb_build_object('company_id',cid,'code','QA001','name','QA Worker','email','qa-worker@example.invalid','joining_date','2026-10-01','basic',20000,'da',2000,'hra',5000,'other',3000,'pf_enabled',true,'esi_enabled',true,'deposit_eligible',true))->>'id')::uuid;
  update public.payroll_companies set settings=settings||'{"statutory_reviewed":true,"deposit_enabled":true,"deposit_cap":10000,"deposit_policy":"QA reviewed test policy"}' where id=cid;
