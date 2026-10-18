@@ -18,3 +18,6 @@ test('late list shows in-time only for positive lateness and computes sorted cum
  const p=allocateLateAllowance([{attendance_id:'on-time',date:'2026-10-01',minutes:0,in_time:'08:00'},{attendance_id:'early',date:'2026-10-02',minutes:0,in_time:'07:58'},{attendance_id:'later',date:'2026-10-03',minutes:30,in_time:'08:30'},{attendance_id:'small',date:'2026-10-04',minutes:2,in_time:'08:02'}]);
  assert.deepEqual(p.events.map(e=>e.in_time),['08:02','08:30']);assert.deepEqual(p.events.map(e=>e.cumulative_minutes),[2,32]);assert.equal(minutesClock(117),'01:57');assert.equal(minutesClock(2),'00:02');
 });
+test('confirmed October table: strict 25 minutes counts the crossing arrival',()=>{
+ const p=allocateLateAllowance(rows([1,1,2,2,2,2,2,3,4,5,6,7,7,8,15,20,30]));assert.equal(p.total_minutes,117);assert.equal(p.used_minutes,24);assert.equal(p.unused_minutes,1);assert.equal(p.events.filter(e=>!e.covered).length,7);assert.equal(p.events[10].cumulative_minutes,30);assert.equal(p.events[10].covered,false);
+});

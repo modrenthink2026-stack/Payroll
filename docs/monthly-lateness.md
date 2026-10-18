@@ -1,13 +1,25 @@
-# Monthly late-arrival review — draft
+# Monthly late-arrival review
 
-Work in progress; not deployed and no database migration has been applied.
+Each staff member receives a strict **25 cumulative minutes per calendar month**. Sort positive late arrivals by minutes ascending, then date. Cover complete arrivals while they fit within 25 minutes. The first arrival that takes the sorted cumulative total above 25 is also subject to a half-day decision; there is no boundary exemption, partial coverage of an arrival or carry-forward to another month.
 
-Requested report columns: Date, Day, Reporting Time, In Time, Late Minutes, Cumulative Late Minutes, and Principal/HR decision. In Time appears only for positive late arrivals. Early/on-time arrivals are excluded from this late-arrival list. Sort late arrivals by minutes ascending, then date; cumulative minutes follow that order. Show durations as HH:MM.
+Examples:
 
-The draft allocates a 25-minute allowance to complete arrivals and proposes a separate 0.5 day LOP or CL decision for each uncovered arrival. Principal/HR decisions are explicit, with no self-review, no guessed financial decisions, no automatic CL choice, a pending-review payroll exception and an audited reopen/refund path. Raw lateness is retained before daily grace; existing reviewed attendance without raw minutes falls back to its reviewed late minutes. Holidays, approved leave, absence and already half-day dates are excluded from the late penalty list to prevent duplicate deductions.
+- 2, 3, 10, 30 minutes: 15 minutes covered, 10 unused; the 30-minute arrival needs one 0.5-day decision.
+- Confirmed October table: 117 total minutes, 24 covered, 1 unused. The 6-minute arrival on 20 October takes the cumulative total to 30 and is counted. Seven arrivals require decisions, totaling 3.5 days if all are assigned LOP.
 
-Unresolved policy: in the user's October table, cumulative lateness reaches 30 minutes on 20 October, but that arrival has no LOP marker. The next six arrivals are marked LOP. Counting the crossing arrival gives seven half-day decisions (3.5 days); exempting it gives six (3 days). The implementation must be reconciled with the user's answer before release. Do not apply salary/leave changes based on the current draft.
+## Use
 
-Validation: 31 JavaScript unit tests and the static production build pass. A test confirms early/on-time In Time values are omitted and late values retain the sorted cumulative total. New database behavior and signed-in UI have not been verified. The attempted migration failed with an expired request state; a subsequent read-only check confirmed no late-review table or raw-late column was created and the live dispatcher remained unchanged.
+1. Set each employee's actual reporting shift under Staff Master. The 08:00–14:30 example is not imposed on all staff.
+2. Import biometric punches and record reviewed attendance. Raw punches still require HR review. Assigned-shift calculation preserves raw lateness before any daily grace, so the monthly policy does not grant a second allowance. Manual late-minute entries must be raw reviewed minutes. Historical rows without raw minutes fall back to stored reviewed minutes.
+3. Open **Attendance → Monthly late review** or **Reports → Monthly late report** and choose the month.
+4. The report shows Date, Day, Reporting Time, In Time, Late Minutes, Cumulative Late Minutes and decision. **In Time appears only for positive late arrivals**; early/on-time arrivals are absent from this list. Durations display as HH:MM. CSV includes the source times and numeric cumulative minutes.
+5. The assigned company Principal or HR office holder chooses **0.5 day LOP or 0.5 day CL for each uncovered arrival**, with a reason. Administrators assign these existing confirmed company accounts under Leave & approvals → Assign leave approver. Late review grants no salary/personnel access and never permits self-review. No office accounts are inferred from job titles.
+6. Recalculate payroll. Unresolved or stale late reviews create payroll exceptions and block approval. LOP reduces paid days and earnings; CL retains full pay and debits unreserved CL once. Payslips and salary CSV include the late totals and reviewed LOP/CL days.
 
-Gauntlet benchmark: user's supplied examples and table. Strongest challenge: the conflicting boundary penalty changes salary by half a day; this is a release blocker pending clarification. No real employee data, decisions, or account permissions were changed.
+Holidays, approved leave, absent/half-day attendance and dates outside employment are excluded from late penalties to prevent duplicate deductions. Early going remains separate. Reopening an unlocked review refunds its CL once and retains review history; attendance changes require reopening first. Changes to approved leave or working-day policy invalidate the source snapshot and require re-review. Locked, released or paid payroll cannot be changed through this workflow. The allowance remains fixed at 25 minutes.
+
+## Validation
+
+32 JavaScript tests and the static production build passed. Six rollback-only PostgreSQL suites passed, including the confirmed October example, the original example in a new month, raw minutes before daily grace, late-only In Time, authority and direct RLS, LOP salary arithmetic, CL full pay, retries, refunds, reserved CL, stale policy inputs, payroll locks and duplicate-penalty exclusions. Migration `payroll_strict_monthly_late_allowance` was applied successfully. Security advisor reported no new findings.
+
+Gauntlet benchmark: the user's examples and strict 25-minute clarification plus a derived permission/ledger rubric. The strongest challenges were the threshold-crossing arrival and duplicate financial effects after attendance/leave changes. The confirmed crossing rule, snapshot validation, reopen/refund history, exclusion guards and retry checks address them. Tests used synthetic data and rolled back; no employee salary or leave decision was made. Signed-in browser interaction remains unverified.
