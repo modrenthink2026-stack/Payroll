@@ -1,1 +1,1 @@
-code,name,email,department,designation,joining_date,basic,da,hra,other,biometric_id,shift_name,shift_start,shift_end,break_minutes,late_grace,early_grace,pf_enabled,esi_enabled,deposit_eligible,bank_account,ifsc,pan,uan,esi_number,manager_email,probation_end
+code,name,email,department,designation,joining_date,basic,da,hra,cca,other,hod_allowance,biometric_id,shift_name,shift_start,shift_end,break_minutes,late_grace,early_grace,pf_enabled,esi_enabled,deposit_eligible,bank_account,ifsc,pan,uan,esi_number,manager_email,probation_end

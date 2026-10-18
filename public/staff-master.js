@@ -1,5 +1,5 @@
 // Shared import validation. No employee files or previews are persisted in the browser.
-export const staffColumns=['code','name','email','department','designation','joining_date','basic','da','hra','other','biometric_id','shift_name','shift_start','shift_end','break_minutes','late_grace','early_grace','pf_enabled','esi_enabled','deposit_eligible','bank_account','ifsc','pan','uan','esi_number','manager_email','probation_end'];
+export const staffColumns=['code','name','email','department','designation','joining_date','basic','da','hra','cca','other','hod_allowance','biometric_id','shift_name','shift_start','shift_end','break_minutes','late_grace','early_grace','pf_enabled','esi_enabled','deposit_eligible','bank_account','ifsc','pan','uan','esi_number','manager_email','probation_end'];
 export const staffTemplate=()=>staffColumns.join(',')+'\r\n';
 export function shiftMinutes(start,end,breakMinutes=0){
  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(start)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(end))throw Error('Shift times must use HH:MM (24-hour format)');
@@ -21,7 +21,7 @@ export function validateStaffImport(input,existing=[]){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(row.joining_date)||!Number.isFinite(Date.parse(row.joining_date))||new Date(row.joining_date).toISOString().slice(0,10)!==row.joining_date)fail('Joining date must be a real YYYY-MM-DD date');
   if(codes.has(row.code.toLowerCase())||emails.has(row.email)||row.biometric_id&&bios.has(row.biometric_id))fail('Duplicate staff code, email or biometric ID');
   codes.add(row.code.toLowerCase());emails.add(row.email);if(row.biometric_id)bios.add(row.biometric_id);
-  for(const key of ['basic','da','hra','other']){if(!/^\d+(\.\d{1,2})?$/.test(row[key]||'0'))fail(key+' must be a non-negative amount with at most two decimals');row[key]=Number(row[key]||0);if(row[key]>999999999999)fail('Salary amount is too large');}
+  for(const key of ['basic','da','hra','cca','other','hod_allowance']){if(!/^\d+(\.\d{1,2})?$/.test(row[key]||'0'))fail(key+' must be a non-negative amount with at most two decimals');row[key]=Number(row[key]||0);if(row[key]>999999999999)fail('Salary amount is too large');}
   row.shift_name=row.shift_name||'General';row.shift_start=row.shift_start||'09:00';row.shift_end=row.shift_end||'18:00';
   for(const key of ['break_minutes','late_grace','early_grace']){if(!/^\d+$/.test(row[key]||'0'))fail(key+' must be whole minutes');row[key]=Number(row[key]||0);if(row[key]>1440)fail(key+' exceeds 1440 minutes');}
   try{shiftMinutes(row.shift_start,row.shift_end,row.break_minutes);}catch(err){fail(err.message);}
