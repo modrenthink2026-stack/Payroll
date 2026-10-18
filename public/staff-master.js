@@ -1,6 +1,6 @@
 import {salaryPayload} from './salary.js';
 // Shared import validation. No employee files or previews are persisted in the browser.
-export const staffColumns=['code','name','email','department','designation','joining_date','basic','da','hra','cca','other','hod_allowance','salary_mode','consolidated_amount','biometric_id','shift_name','shift_start','shift_end','break_minutes','late_grace','early_grace','pf_enabled','esi_enabled','deposit_eligible','bank_account','ifsc','pan','uan','esi_number','manager_email','probation_end'];
+export const staffColumns=['code','name','email','department','designation','joining_date','basic','da','hra','cca','other','hod_allowance','salary_mode','consolidated_amount','pt_override','deposit_eligible_override','biometric_id','shift_name','shift_start','shift_end','break_minutes','late_grace','early_grace','pf_enabled','esi_enabled','deposit_eligible','bank_account','ifsc','pan','uan','esi_number','manager_email','probation_end'];
 export const staffTemplate=()=>staffColumns.join(',')+'\r\n';
 export function shiftMinutes(start,end,breakMinutes=0){
  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(start)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(end))throw Error('Shift times must use HH:MM (24-hour format)');
@@ -32,6 +32,9 @@ export function validateStaffImport(input,existing=[]){
   if(row.probation_end&&(!/^\d{4}-\d{2}-\d{2}$/.test(row.probation_end)||!Number.isFinite(Date.parse(row.probation_end))||new Date(row.probation_end).toISOString().slice(0,10)!==row.probation_end))fail('Invalid probation end date');
   row.salary_mode=row.salary_mode||'component';if(!['component','consolidated'].includes(row.salary_mode))fail('Salary mode must be component or consolidated');
   if(row.salary_mode==='consolidated'&&!/^\d+(\.\d{1,2})?$/.test(row.consolidated_amount||row.other||'0'))fail('Invalid consolidated amount');
+  if(row.pt_override!==''&&!/^\d+(\.\d{1,2})?$/.test(row.pt_override))fail('PT must be a non-negative monthly amount with at most two decimals');
+  if(row.deposit_eligible_override==='')row.deposit_eligible_override=null;
+  else {if(!['true','false','yes','no','1','0'].includes(row.deposit_eligible_override.toLowerCase()))fail('Salary deposit eligibility must be true/false or blank');row.deposit_eligible_override=['true','yes','1'].includes(row.deposit_eligible_override.toLowerCase());}
   return salaryPayload(row);
  });
 }

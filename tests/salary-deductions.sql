@@ -1,0 +1,57 @@
+begin;
+do $$
+declare uid uuid; cid uuid; sid uuid; general_id uuid; rid uuid; reviewer uuid=gen_random_uuid(); rec uuid; p jsonb;
+begin
+ select user_id into uid from public.payroll_members where role='admin' limit 1;
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',uid,'role','authenticated')::text,true);
+ cid=(public.payroll_api('company_create','{"name":"Salary deductions QA rollback"}')->>'id')::uuid;
+ p=jsonb_build_object('company_id',cid,'code','DED-C','name','Consolidated deductions','email','','joining_date','2026-10-01','salary_mode','consolidated','consolidated_amount',18000,'pf_enabled',true,'esi_enabled',true,'deposit_eligible',true,'deposit_eligible_override',true,'pt_override',200);
+ sid=(public.payroll_api('staff_save',p)->>'id')::uuid;
+ update public.payroll_profiles set pt=175 where staff_id=sid;
+ update public.payroll_companies set settings=settings||'{"statutory_reviewed":true,"deposit_enabled":true,"deposit_cap":10000,"deposit_policy":"Reviewed QA security deposit authorization"}' where id=cid;
+ perform public.payroll_api('attendance_save',jsonb_build_object('company_id',cid,'staff_id',sid,'from_date','2026-10-01','to_date','2026-10-31','status','present'));
+ rid=(public.payroll_api('payroll_calculate',jsonb_build_object('company_id',cid,'month','2026-10-01'))->>'id')::uuid;
+ if not exists(select 1 from public.payroll_lines where run_id=rid and staff_id=sid and gross=18000 and net=16000 and (deductions->>'Security deposit')::numeric=1800 and (deductions->>'PT')::numeric=200 and (deductions->>'PF')::numeric=0 and (deductions->>'ESI')::numeric=0) then raise exception 'Consolidated deposit/PT calculation failed';end if;
+ insert into public.payroll_deposits(company_id,staff_id,amount,reason) values(cid,sid,9500,'QA opening balance');
+ rid=(public.payroll_api('payroll_calculate',jsonb_build_object('company_id',cid,'month','2026-10-01'))->>'id')::uuid;
+ if not exists(select 1 from public.payroll_lines where run_id=rid and staff_id=sid and (deductions->>'Security deposit')::numeric=500 and deposit_closing=10000) then raise exception 'Deposit cap exceeded';end if;
+ delete from public.payroll_deposits where company_id=cid;
+ update public.payroll_companies set settings=settings||'{"deposit_enabled":false}' where id=cid;
+ rid=(public.payroll_api('payroll_calculate',jsonb_build_object('company_id',cid,'month','2026-10-01'))->>'id')::uuid;
+ if not exists(select 1 from public.payroll_lines where run_id=rid and staff_id=sid and (deductions->>'Security deposit')::numeric=0 and (deductions->>'PT')::numeric=200) then raise exception 'Disabled company policy ignored';end if;
+ update public.payroll_companies set settings=settings||'{"deposit_enabled":true}' where id=cid;
+ perform public.payroll_api('attendance_save',jsonb_build_object('company_id',cid,'staff_id',sid,'from_date','2026-10-01','to_date','2026-10-01','status','absent'));
+ rid=(public.payroll_api('payroll_calculate',jsonb_build_object('company_id',cid,'month','2026-10-01'))->>'id')::uuid;
+ if not exists(select 1 from public.payroll_lines where run_id=rid and staff_id=sid and gross=17419.35 and (deductions->>'Security deposit')::numeric=1741.94 and (deductions->>'PT')::numeric=200) then raise exception 'LOP deposit or monthly PT changed';end if;
+ perform public.payroll_api('attendance_save',jsonb_build_object('company_id',cid,'staff_id',sid,'from_date','2026-10-01','to_date','2026-10-01','status','present'));
+ rec=(public.payroll_api('increment_save',p||jsonb_build_object('staff_id',sid,'effective_from','2026-10-17','reason','Reviewed deduction revision','deposit_eligible_override',false,'pt_override',300))->>'id')::uuid;
+ rid=(public.payroll_api('payroll_calculate',jsonb_build_object('company_id',cid,'month','2026-10-01'))->>'id')::uuid;
+ if not exists(select 1 from public.payroll_lines where run_id=rid and staff_id=sid and (deductions->>'Security deposit')::numeric=1800 and (deductions->>'PT')::numeric=200) then raise exception 'Pending revision applied deductions early';end if;
+ insert into auth.users(id,email,email_confirmed_at) values(reviewer,'ded-reviewer@example.invalid',now());insert into public.payroll_members values(cid,reviewer,'accountant');
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',reviewer,'role','authenticated')::text,true);
+ perform public.payroll_api('increment_decide',jsonb_build_object('company_id',cid,'id',rec,'decision','accountant_reviewed'));
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',uid,'role','authenticated')::text,true);
+ perform public.payroll_api('increment_decide',jsonb_build_object('company_id',cid,'id',rec,'decision','approved'));
+ rid=(public.payroll_api('payroll_calculate',jsonb_build_object('company_id',cid,'month','2026-10-01'))->>'id')::uuid;
+ if not exists(select 1 from public.payroll_lines where run_id=rid and staff_id=sid and (deductions->>'Security deposit')::numeric=929.03 and (deductions->>'PT')::numeric=300) then raise exception 'Approved dated deposit or monthly PT override lost';end if;
+ if not exists(select 1 from public.payroll_profiles where staff_id=sid and pt=175 and deposit_eligible=true) then raise exception 'Salary override changed staff defaults';end if;
+ general_id=(public.payroll_api('staff_save',jsonb_build_object('company_id',cid,'code','DED-G','name','General deductions','email','','joining_date','2026-10-01','basic',20000,'da',2000,'hra',5000,'other',3000,'deposit_eligible_override',true,'pt_override',150))->>'id')::uuid;
+ perform public.payroll_api('attendance_save',jsonb_build_object('company_id',cid,'staff_id',general_id,'from_date','2026-10-01','to_date','2026-10-31','status','present'));
+ rid=(public.payroll_api('payroll_calculate',jsonb_build_object('company_id',cid,'month','2026-10-01'))->>'id')::uuid;
+ if not exists(select 1 from public.payroll_lines where run_id=rid and staff_id=general_id and gross=30000 and net=26850 and (deductions->>'Security deposit')::numeric=3000 and (deductions->>'PT')::numeric=150) then raise exception 'General salary deductions missing';end if;
+ -- A salary with no overrides still follows existing Tax Inputs and staff eligibility.
+ general_id=(public.payroll_api('staff_save',jsonb_build_object('company_id',cid,'code','DED-F','name','Default deductions','email','','joining_date','2026-10-01','basic',20000,'da',2000,'hra',5000,'other',3000,'deposit_eligible',true))->>'id')::uuid;
+ update public.payroll_profiles set pt=125 where staff_id=general_id;
+ perform public.payroll_api('attendance_save',jsonb_build_object('company_id',cid,'staff_id',general_id,'from_date','2026-10-01','to_date','2026-10-31','status','present'));
+ rid=(public.payroll_api('payroll_calculate',jsonb_build_object('company_id',cid,'month','2026-10-01'))->>'id')::uuid;
+ if not exists(select 1 from public.payroll_lines where run_id=rid and staff_id=general_id and (deductions->>'PT')::numeric=125 and (deductions->>'Security deposit')::numeric=3000) then raise exception 'Legacy defaults lost';end if;
+ insert into public.payroll_staff(company_id,code,name,email,department,joining_date) values(cid,'DED-DEP','Department zero deductions',null,'Support','2026-10-01') returning id into general_id;
+ insert into public.payroll_profiles(company_id,staff_id,pt,deposit_eligible) values(cid,general_id,175,true);
+ perform public.payroll_department_salaries(jsonb_build_object('company_id',cid,'department','Support','effective_from','2026-10-01','reason','Explicit zero PT and no deposit','request_id',gen_random_uuid(),'rows',jsonb_build_array(jsonb_build_object('staff_id',general_id,'expected_salary_id',null,'salary_mode','consolidated','consolidated_amount',8000,'deposit_eligible_override',false,'pt_override','0'))));
+ perform public.payroll_api('attendance_save',jsonb_build_object('company_id',cid,'staff_id',general_id,'from_date','2026-10-01','to_date','2026-10-31','status','present'));
+ rid=(public.payroll_api('payroll_calculate',jsonb_build_object('company_id',cid,'month','2026-10-01'))->>'id')::uuid;
+ if not exists(select 1 from public.payroll_lines where run_id=rid and staff_id=general_id and gross=8000 and net=8000 and (deductions->>'PT')::numeric=0 and (deductions->>'Security deposit')::numeric=0) then raise exception 'Department explicit zero/false lost to defaults';end if;
+
+end$$;
+rollback;
+select 'PASS: consolidated/general deductions, cap, disabled policy, LOP, no early revision, approval propagation, dated eligibility and Tax Inputs fallback' as result;
