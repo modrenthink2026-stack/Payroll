@@ -76,7 +76,7 @@ begin
  execute 'set local role authenticated';
  if (select count(*) from public.payroll_staff where company_id=cid)<>1 then raise exception 'Direct RLS staff isolation failed';end if;
  if exists(select 1 from public.payroll_companies where id=othercid) then raise exception 'Direct RLS company isolation failed';end if;
- if (select count(*) from public.payroll_profiles where company_id=cid)<>1 then raise exception 'Direct RLS salary-profile isolation failed';end if;
+ if (select count(*) from public.payroll_profiles where company_id=cid)<>0 then raise exception 'Staff private profile access escaped self-service scope';end if;
  caught=false;begin update public.payroll_profiles set annual_tax=0 where staff_id=sid;exception when insufficient_privilege then caught=true;end;
  if not caught then raise exception 'Direct write privileges escaped RPC';end if;
  execute 'reset role';

@@ -45,13 +45,13 @@ begin
  perform set_config('request.jwt.claims',jsonb_build_object('sub',principals[4],'role','authenticated')::text,true);
  caught=false;begin perform public.payroll_api('leave_decide',jsonb_build_object('company_id',cid,'id',leaves[1],'decision','approved'));exception when others then caught=true;end;
  if not caught then raise exception 'HR approved teacher leave';end if;
- -- Principal sees only assigned leave plus own staff data, never other staff pay or details.
+ -- Principal now has full company access under the updated role matrix; approval authority remains office-specific.
  perform set_config('request.jwt.claims',jsonb_build_object('sub',principals[1],'role','authenticated')::text,true);
  j=public.payroll_api('state',jsonb_build_object('company_id',cid));
- if jsonb_array_length(j->'leaves')<>2 or jsonb_array_length(j->'staff')<>1 or jsonb_array_length(j->'profiles')<>0 or jsonb_array_length(j->'salaries')<>0 or jsonb_array_length(j->'staff_details')<>0 then raise exception 'Approver visibility expanded beyond leave';end if;
+ if jsonb_array_length(j->'leaves')<>8 or jsonb_array_length(j->'staff')<>12 or jsonb_array_length(j->'profiles')<>1 or jsonb_array_length(j->'salaries')<>1 or jsonb_array_length(j->'staff_details')<>1 then raise exception 'Principal full company access mismatch';end if;
  execute 'set local role authenticated';
- if (select count(*) from public.payroll_leaves where company_id=cid)<>2 then raise exception 'Direct leave RLS mismatch';end if;
- if exists(select 1 from public.payroll_leave_approvers where company_id=cid) then raise exception 'Approval account mapping leaked';end if;
+ if (select count(*) from public.payroll_leaves where company_id=cid)<>8 then raise exception 'Direct leave RLS mismatch';end if;
+ if (select count(*) from public.payroll_leave_approvers where company_id=cid)<>4 then raise exception 'Principal full-access settings missing';end if;
  execute 'reset role';
  -- Approved cancellation restores balance once; rejected leave does not debit.
  perform public.payroll_api('leave_decide',jsonb_build_object('company_id',cid,'id',leaves[1],'decision','approved'));

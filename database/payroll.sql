@@ -261,6 +261,74 @@ revoke all on function payroll_private.late_can_review(uuid) from public,anon,au
 grant execute on function payroll_private.late_can_review(uuid) to authenticated;
 create policy late_reviews_read on public.payroll_late_reviews for select to authenticated using(payroll_private.role(company_id) in ('admin','hr','accountant') or payroll_private.own(staff_id) or payroll_private.late_can_review(staff_id));
 
+-- Company access rules and reserved name-based login IDs. No Auth accounts/passwords are changed.
+alter table public.payroll_members drop constraint payroll_members_role_check;
+alter table public.payroll_members add constraint payroll_members_role_check check(role in ('admin','principal','president','director','hr','accountant','manager','staff'));
+alter table public.payroll_staff add column login_name text;
+create unique index payroll_staff_login_name_idx on public.payroll_staff(lower(login_name));
+create function payroll_private.staff_login_name(n text,c text) returns text language plpgsql security definer set search_path='' as $$
+declare base text;candidate text;i int=1;
+begin
+ base=left(trim(both '.' from regexp_replace(lower(coalesce(n,'')),'[^a-z0-9]+','.','g')),48);if base='' then base='staff';end if;
+ perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('payroll-login:'||base));
+ candidate=base;
+ while exists(select 1 from public.payroll_staff where lower(login_name)=candidate) loop
+  i=i+1;candidate=base||'.'||i::text;
+ end loop;
+ return candidate;
+end$$;
+create function payroll_private.set_staff_login_name() returns trigger language plpgsql security definer set search_path='' as $$
+begin new.login_name=payroll_private.staff_login_name(new.name,new.code);return new;end$$;
+revoke all on function payroll_private.staff_login_name(text,text),payroll_private.set_staff_login_name() from public,anon,authenticated;
+do $$declare s record;begin for s in select id,name,code from public.payroll_staff where login_name is null order by company_id,code,id loop
+ update public.payroll_staff set login_name=payroll_private.staff_login_name(s.name,s.code) where id=s.id;
+end loop;end$$;
+alter table public.payroll_staff alter column login_name set not null;
+create trigger payroll_staff_login_name before insert on public.payroll_staff for each row execute function payroll_private.set_staff_login_name();
+create or replace function payroll_private.role(cid uuid) returns text language sql stable security definer set search_path='' as $$
+ select case when m.role in ('admin','principal','president') or exists(select 1 from public.payroll_leave_approvers a where a.company_id=cid and a.user_id=auth.uid() and a.office in ('principal','president')) then 'admin'
+ when m.role='hr' or exists(select 1 from public.payroll_leave_approvers a where a.company_id=cid and a.user_id=auth.uid() and a.office='hr') then 'hr' when m.role='director' or exists(select 1 from public.payroll_leave_approvers a where a.company_id=cid and a.user_id=auth.uid() and a.office='director') then 'manager' else m.role end
+ from public.payroll_members m where m.company_id=cid and m.user_id=auth.uid()
+ and not exists(select 1 from auth.users u where u.id=auth.uid() and coalesce((u.raw_app_meta_data->>'payroll_password_change_required')::boolean,false))
+ and not exists(select 1 from public.payroll_staff s where s.company_id=cid and s.user_id=auth.uid() and s.status='separated')
+ and (m.role<>'staff' or exists(select 1 from public.payroll_staff s where s.company_id=cid and s.user_id=auth.uid() and s.status='active'))
+$$;
+create function payroll_private.display_role(cid uuid) returns text language sql stable security definer set search_path='' as $$
+ select case when m.role in ('admin','principal','president','director') then m.role
+ when exists(select 1 from public.payroll_leave_approvers a where a.company_id=cid and a.user_id=auth.uid() and a.office='principal') then 'principal'
+ when exists(select 1 from public.payroll_leave_approvers a where a.company_id=cid and a.user_id=auth.uid() and a.office='president') then 'president'
+ when exists(select 1 from public.payroll_leave_approvers a where a.company_id=cid and a.user_id=auth.uid() and a.office='director') then 'director' else payroll_private.role(cid) end from public.payroll_members m where m.company_id=cid and m.user_id=auth.uid() and payroll_private.role(cid) is not null
+$$;
+create function payroll_private.staff_run_access(rid uuid) returns boolean language sql stable security definer set search_path='' as $$
+ select exists(select 1 from public.payroll_runs r join public.payroll_lines l on l.run_id=r.id where r.id=rid and r.status in ('released','paid') and payroll_private.own(l.staff_id))
+$$;
+revoke all on function payroll_private.display_role(uuid),payroll_private.staff_run_access(uuid) from public,anon,authenticated;
+grant execute on function payroll_private.staff_run_access(uuid) to authenticated;
+drop policy profiles_read on public.payroll_profiles;
+create policy profiles_read on public.payroll_profiles for select to authenticated using(payroll_private.role(company_id) in ('admin','hr','accountant'));
+drop policy salaries_read on public.payroll_salaries;
+create policy salaries_read on public.payroll_salaries for select to authenticated using(payroll_private.role(company_id) in ('admin','accountant'));
+drop policy attendance_read on public.payroll_attendance;
+create policy attendance_read on public.payroll_attendance for select to authenticated using(payroll_private.role(company_id) in ('admin','hr','accountant') or (payroll_private.role(company_id)='manager' and payroll_private.team(staff_id)));
+drop policy punches_read on public.payroll_punches;
+create policy punches_read on public.payroll_punches for select to authenticated using(payroll_private.role(company_id) in ('admin','hr','accountant'));
+drop policy documents_read on public.payroll_documents;
+create policy documents_read on public.payroll_documents for select to authenticated using(payroll_private.role(company_id) in ('admin','hr'));
+drop policy assessments_read on public.payroll_assessments;
+create policy assessments_read on public.payroll_assessments for select to authenticated using(payroll_private.role(company_id)='admin' or (payroll_private.role(company_id)='manager' and payroll_private.team(staff_id)));
+drop policy increments_read on public.payroll_increments;
+create policy increments_read on public.payroll_increments for select to authenticated using(payroll_private.role(company_id) in ('admin','accountant'));
+drop policy runs_read on public.payroll_runs;
+create policy runs_read on public.payroll_runs for select to authenticated using(payroll_private.role(company_id) in ('admin','accountant') or (payroll_private.role(company_id)='staff' and payroll_private.staff_run_access(id)));
+drop policy lines_read on public.payroll_lines;
+create policy lines_read on public.payroll_lines for select to authenticated using(payroll_private.role(company_id) in ('admin','accountant') or (payroll_private.role(company_id)='staff' and payroll_private.own(staff_id) and payroll_private.staff_run_access(run_id)));
+drop policy deposits_read on public.payroll_deposits;
+create policy deposits_read on public.payroll_deposits for select to authenticated using(payroll_private.role(company_id) in ('admin','accountant'));
+drop policy staff_details_read on public.payroll_staff_details;
+create policy staff_details_read on public.payroll_staff_details for select to authenticated using(payroll_private.role(company_id) in ('admin','hr'));
+drop policy late_reviews_read on public.payroll_late_reviews;
+create policy late_reviews_read on public.payroll_late_reviews for select to authenticated using(payroll_private.role(company_id) in ('admin','hr','accountant') or (payroll_private.role(company_id)<>'staff' and payroll_private.late_can_review(staff_id)));
+
 create function payroll_private.dispatch(action text,payload jsonb) returns jsonb language plpgsql security definer set search_path='' as $$
 declare uid uuid=auth.uid(); cid uuid=nullif(payload->>'company_id','')::uuid; r text; sid uuid=nullif(payload->>'staff_id','')::uuid; rec uuid=nullif(payload->>'id','')::uuid;
  c public.payroll_companies; st public.payroll_staff; le public.payroll_leaves; late_review public.payroll_late_reviews; late_plan jsonb; m date; cl_days numeric; doc public.payroll_documents; inc public.payroll_increments; run public.payroll_runs;
@@ -268,13 +336,21 @@ declare uid uuid=auth.uid(); cid uuid=nullif(payload->>'company_id','')::uuid; r
 begin
  if uid is null then raise exception 'Authentication required';end if;
  if not exists(select 1 from auth.users where id=uid and email_confirmed_at is not null) then raise exception 'Confirm your email before accessing payroll';end if;
+ if action='staff_password_ready' then
+  if not exists(select 1 from public.payroll_staff s join auth.users u on u.id=s.user_id join public.payroll_members m on m.company_id=s.company_id and m.user_id=u.id where u.id=uid and s.status='active' and u.raw_app_meta_data->>'payroll_staff_id'=s.id::text and u.raw_app_meta_data->>'payroll_company_id'=s.company_id::text) then raise exception 'Staff account activation must finish before changing the temporary password';end if;
+  return jsonb_build_object('ready',true);
+ end if;
+ if exists(select 1 from auth.users where id=uid and coalesce((raw_app_meta_data->>'payroll_password_change_required')::boolean,false)) then
+  if action='bootstrap' then return jsonb_build_object('password_change_required',true,'companies','[]'::jsonb);end if;
+  raise exception 'Change your temporary password before accessing payroll';
+ end if;
  if action='bootstrap' then
   select lower(u.email) into v_email from auth.users u where id=uid;
   for st in select * from public.payroll_staff where lower(payroll_staff.email)=v_email and status='active' and (user_id is null or user_id=uid) loop
    update public.payroll_staff set user_id=uid where id=st.id;
    insert into public.payroll_members(company_id,user_id,role) values(st.company_id,uid,'staff') on conflict do nothing;
   end loop;
-  return jsonb_build_object('companies',coalesce((select jsonb_agg(to_jsonb(co)||jsonb_build_object('role',m.role)) from public.payroll_companies co join public.payroll_members m on m.company_id=co.id where m.user_id=uid and payroll_private.role(co.id) is not null),'[]'::jsonb));
+  return jsonb_build_object('companies',coalesce((select jsonb_agg(case when payroll_private.role(co.id)='staff' then jsonb_build_object('id',co.id,'name',co.name,'address',co.address,'settings',jsonb_build_object('working_days',co.settings->'working_days','holidays',co.settings->'holidays')) else to_jsonb(co) end||jsonb_build_object('role',payroll_private.display_role(co.id))) from public.payroll_companies co join public.payroll_members m on m.company_id=co.id where m.user_id=uid and payroll_private.role(co.id) is not null),'[]'::jsonb));
  end if;
  if action='company_create' then
   if not exists(select 1 from public.payroll_members where user_id=uid and payroll_private.role(company_id)='admin') then raise exception 'Administrator access required';end if;
@@ -285,6 +361,13 @@ begin
  end if;
  r=payroll_private.role(cid);
  if r is null then raise exception 'No access to this company';end if;
+ if r='staff' and action not in ('state','leave_apply','leave_withdraw') then raise exception 'Staff access is limited to own leave, balances, rules, holidays and released payslips';end if;
+ if r='hr' and action not in ('state','staff_save','staff_roster_import','staff_delete','attendance_save','attendance_report','punch_import','late_month','late_review','late_reopen','leave_apply','leave_withdraw','leave_decide','leave_credit','leave_policy','leave_group_set','document_save','document_decide','document_ack') then raise exception 'HR access is limited to staff entry, attendance/biometric leave, leave administration and letters';end if;
+ if action='staff_login_prepare' then
+  if r<>'admin' then raise exception 'Full company access required';end if;
+  select * into st from public.payroll_staff where id=sid and company_id=cid and status='active';if not found then raise exception 'Active staff not found in this company';end if;
+  return jsonb_build_object('staff_id',st.id,'username',st.login_name,'email',st.login_name||'@staff.payroll.invalid','linked',st.user_id is not null,'pending_user_id',(select u.id from auth.users u where lower(u.email)=st.login_name||'@staff.payroll.invalid' and u.raw_app_meta_data->>'payroll_staff_id'=st.id::text and u.raw_app_meta_data->>'payroll_company_id'=cid::text));
+ end if;
  if action='late_month' then
   m=(payload->>'month')::date;if m is null or m<>date_trunc('month',m)::date then raise exception 'Select a month';end if;
   return coalesce((select jsonb_agg(jsonb_build_object('staff_id',s.id,'code',s.code,'name',s.name,'can_review',payroll_private.late_can_review(s.id),'plan',payroll_private.late_plan(s.id,m),'review',(select to_jsonb(l) from public.payroll_late_reviews l where l.staff_id=s.id and l.month=m and l.status='active')) order by s.code) from public.payroll_staff s where s.company_id=cid and s.joining_date<(m+interval '1 month')::date and coalesce(s.leaving_date,'infinity'::date)>=m and (r in ('admin','hr','accountant') or payroll_private.own(s.id) or payroll_private.late_can_review(s.id))),'[]'::jsonb);
@@ -293,7 +376,7 @@ begin
   return coalesce((select jsonb_agg(a order by work_date,staff_id) from public.payroll_attendance a where company_id=cid and work_date>=date_trunc('month',(payload->>'month')::date)::date and work_date<(date_trunc('month',(payload->>'month')::date)+interval '1 month')::date and (r in ('admin','hr','accountant') or payroll_private.own(staff_id) or (r='manager' and payroll_private.team(staff_id)))),'[]'::jsonb);
  end if;
  if action='state' then
-  return jsonb_build_object(
+  out=jsonb_build_object(
    'staff',coalesce((select jsonb_agg(s order by code) from public.payroll_staff s where company_id=cid and (r in ('admin','hr','accountant') or payroll_private.own(id) or (r='manager' and payroll_private.team(id)))),'[]'::jsonb),
    'staff_details',coalesce((select jsonb_agg(d) from public.payroll_staff_details d where company_id=cid and (r in ('admin','hr') or payroll_private.own(staff_id))),'[]'::jsonb),
    'profiles',coalesce((select jsonb_agg(p) from public.payroll_profiles p where company_id=cid and (r in ('admin','hr','accountant') or payroll_private.own(staff_id))),'[]'::jsonb),
@@ -310,6 +393,13 @@ begin
    'lines',coalesce((select jsonb_agg(l) from public.payroll_lines l where company_id=cid and (r in ('admin','hr','accountant') or (payroll_private.own(staff_id) and exists(select 1 from public.payroll_runs where id=l.run_id and status in ('released','paid'))))),'[]'::jsonb),
    'deposits',coalesce((select jsonb_agg(d order by created_at) from public.payroll_deposits d where company_id=cid and (r in ('admin','hr','accountant') or payroll_private.own(staff_id))),'[]'::jsonb),
    'audit',case when r='admin' then coalesce((select jsonb_agg(a) from (select * from public.payroll_audit where company_id=cid order by id desc limit 50)a),'[]'::jsonb) else '[]'::jsonb end);
+  if r='staff' then
+   out=out||jsonb_build_object('staff_details','[]'::jsonb,'profiles','[]'::jsonb,'salaries','[]'::jsonb,'attendance','[]'::jsonb,'punches','[]'::jsonb,'documents','[]'::jsonb,'assessments','[]'::jsonb,'increments','[]'::jsonb,'deposits','[]'::jsonb,'leave_routing','{}'::jsonb,
+   'runs',coalesce((select jsonb_agg(prun) from public.payroll_runs prun where prun.company_id=cid and payroll_private.staff_run_access(prun.id)),'[]'::jsonb));
+  elsif r='hr' then
+   out=out||jsonb_build_object('salaries','[]'::jsonb,'assessments','[]'::jsonb,'increments','[]'::jsonb,'deposits','[]'::jsonb,'runs','[]'::jsonb,'lines','[]'::jsonb);
+  end if;
+  return out;
  end if;
  -- Lock company first for all writes. This serializes payroll locking with staff/leave/input edits.
  select * into c from public.payroll_companies where id=cid for update;
@@ -321,7 +411,15 @@ begin
   if exists(select 1 from payroll_private.requests where token=reqid) then raise exception 'Request ID collision';end if;
  end if;
  if sid is not null then select * into st from public.payroll_staff where id=sid and company_id=cid for update;if not found then raise exception 'Staff not found in this company';end if;end if;
- if action in ('late_review','late_reopen') then
+ if action='staff_login_link' then
+  if r<>'admin' or sid is null or st.status<>'active' then raise exception 'Full company access and active staff required';end if;
+  if st.user_id is not null then raise exception 'Staff login is already linked';end if;
+  target_uid=nullif(payload->>'user_id','')::uuid;
+  if not exists(select 1 from auth.users u where u.id=target_uid and lower(u.email)=st.login_name||'@staff.payroll.invalid' and u.email_confirmed_at is not null and u.raw_app_meta_data->>'payroll_staff_id'=st.id::text and u.raw_app_meta_data->>'payroll_company_id'=cid::text and (u.raw_app_meta_data->>'payroll_password_change_required')::boolean) then raise exception 'Account was not provisioned for this staff record';end if;
+  if exists(select 1 from public.payroll_staff where user_id=target_uid) then raise exception 'Account is already linked to staff';end if;
+  update public.payroll_staff set user_id=target_uid,email=st.login_name||'@staff.payroll.invalid' where id=sid;
+  insert into public.payroll_members(company_id,user_id,role) values(cid,target_uid,'staff') on conflict do nothing;rec=sid;
+ elsif action in ('late_review','late_reopen') then
   if sid is null or not payroll_private.late_can_review(sid) then raise exception 'Assigned Principal / HR approval required; self-review is forbidden';end if;
   m=(payload->>'month')::date;if m is null or m<>date_trunc('month',m)::date then raise exception 'Select a month';end if;
   if length(trim(coalesce(payload->>'reason','')))<3 then raise exception 'Enter a review reason';end if;
@@ -438,8 +536,10 @@ begin
    insert into public.payroll_staff(company_id,code,name,email,department,designation,joining_date,biometric_id,probation_end)
    values(cid,nullif(trim(payload->>'code'),''),nullif(trim(payload->>'name'),''),nullif(lower(trim(payload->>'email')),''),coalesce(payload->>'department',''),coalesce(payload->>'designation',''),(payload->>'joining_date')::date,nullif(payload->>'biometric_id',''),nullif(payload->>'probation_end','')::date) returning id into sid;
    insert into public.payroll_profiles(staff_id,company_id) values(sid,cid);
+   if r<>'hr' then
    insert into public.payroll_salaries(company_id,staff_id,effective_from,basic,da,hra,other,approved_by)
    values(cid,sid,(payload->>'joining_date')::date,(payload->>'basic')::numeric,(payload->>'da')::numeric,(payload->>'hra')::numeric,(payload->>'other')::numeric,uid);
+   end if;
   else
    if nullif(lower(trim(payload->>'email')),'') is distinct from st.email and st.user_id is not null then raise exception 'Linked email changes require account review';end if;
    update public.payroll_staff set email=nullif(lower(trim(payload->>'email')),''),name=nullif(trim(payload->>'name'),''),department=payload->>'department',designation=payload->>'designation',biometric_id=nullif(payload->>'biometric_id',''),probation_end=nullif(payload->>'probation_end','')::date where id=sid;
@@ -638,7 +738,7 @@ begin
 end$$;
 
 revoke all on all functions in schema payroll_private from public,anon,authenticated;
-grant execute on function payroll_private.role(uuid),payroll_private.own(uuid),payroll_private.team(uuid),payroll_private.leave_can_decide(uuid),payroll_private.late_can_review(uuid),payroll_private.dispatch(text,jsonb) to authenticated;
+grant execute on function payroll_private.role(uuid),payroll_private.own(uuid),payroll_private.team(uuid),payroll_private.leave_can_decide(uuid),payroll_private.late_can_review(uuid),payroll_private.staff_run_access(uuid),payroll_private.dispatch(text,jsonb) to authenticated;
 create function public.payroll_api(action text,payload jsonb default '{}') returns jsonb language sql security invoker set search_path='' as $$select payroll_private.dispatch(action,payload)$$;
 revoke all on function public.payroll_api(text,jsonb) from public,anon;
 grant execute on function public.payroll_api(text,jsonb) to authenticated;
