@@ -60,3 +60,5 @@ export async function accountAction(payload){await refresh();return request("/fu
 export async function assignShifts(payload){await refresh();return request('/rest/v1/rpc/payroll_assign_shifts',{payload},session.access_token);}
 
 export async function saveDepartmentSalaries(payload){await refresh();return request('/rest/v1/rpc/payroll_department_salaries',{payload},session.access_token);}
+
+export async function assignUsernameRole(payload){await refresh();return request('/rest/v1/rpc/payroll_username_role',{payload},session.access_token);}

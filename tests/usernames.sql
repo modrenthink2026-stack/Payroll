@@ -1,0 +1,34 @@
+begin;
+do $$
+declare uid uuid; cid uuid; cid2 uuid; a uuid; b uuid; ua uuid=gen_random_uuid(); ub uuid=gen_random_uuid(); aname text; bname text; caught boolean;
+begin
+ select user_id into uid from public.payroll_members where role='admin' limit 1;
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',uid,'role','authenticated')::text,true);
+ cid=(public.payroll_api('company_create','{"name":"Username QA rollback"}')->>'id')::uuid;
+ cid2=(public.payroll_api('company_create','{"name":"Username other QA rollback"}')->>'id')::uuid;
+ insert into auth.users(id,email,email_confirmed_at) values(ua,'username-qa-a@example.invalid',now()),(ub,'username-qa-b@example.invalid',now());
+ insert into public.payroll_staff(company_id,code,name,email,user_id,joining_date) values(cid,'UN-A','Username QA Same','username-qa-a@example.invalid',ua,'2026-10-01') returning id,login_name into a,aname;
+ insert into public.payroll_staff(company_id,code,name,email,user_id,joining_date) values(cid,'UN-B','Username QA Same','username-qa-b@example.invalid',ub,'2026-10-01') returning id,login_name into b,bname;
+ insert into public.payroll_members values(cid,ua,'staff'),(cid,ub,'staff');
+ if aname=bname then raise exception 'Duplicate names share username';end if;
+ perform public.payroll_username_role(jsonb_build_object('company_id',cid,'username',upper(aname),'role','hr'));
+ if not exists(select 1 from public.payroll_members where company_id=cid and user_id=ua and role='hr') or not exists(select 1 from public.payroll_members where company_id=cid and user_id=ub and role='staff') then raise exception 'Wrong duplicate-name account granted';end if;
+ caught=false;begin perform public.payroll_username_role(jsonb_build_object('company_id',cid2,'username',aname,'role','admin'));exception when others then caught=true;end;
+ if not caught then raise exception 'Cross-company user grant';end if;
+ caught=false;begin perform public.payroll_username_role(jsonb_build_object('company_id',cid,'username','username-qa-a@example.invalid','role','admin'));exception when others then caught=true;end;
+ if not caught then raise exception 'Email accepted as username';end if;
+ update public.payroll_staff set status='separated' where id=b;
+ caught=false;begin perform public.payroll_username_role(jsonb_build_object('company_id',cid,'username',bname,'role','admin'));exception when others then caught=true;end;
+ if not caught then raise exception 'Separated user granted';end if;
+ insert into public.payroll_staff(company_id,code,name,joining_date) values(cid,'UN-PENDING','Username Pending','2026-10-01') returning login_name into bname;
+ caught=false;begin perform public.payroll_username_role(jsonb_build_object('company_id',cid,'username',bname,'role','admin'));exception when others then caught=true;end;
+ if not caught then raise exception 'Unactivated user granted';end if;
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',ua,'role','authenticated')::text,true);
+ caught=false;begin perform public.payroll_username_role(jsonb_build_object('company_id',cid,'username',aname,'role','admin'));exception when others then caught=true;end;
+ if not caught then raise exception 'HR escalation';end if;
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',uid,'role','authenticated')::text,true);
+ a=(public.payroll_api('staff_save',jsonb_build_object('company_id',cid,'code','NOEMAIL','name','No email staff','email','','joining_date','2026-10-01','basic',0,'da',0,'hra',0,'other',0))->>'id')::uuid;
+ if not exists(select 1 from public.payroll_staff where id=a and email is null and login_name is not null) then raise exception 'Username staff entry required email';end if;
+end$$;
+rollback;
+select 'PASS: unique usernames, correct role target, tenant isolation, email rejection, inactive/unactivated rejection, HR denial and email-free staff creation' as result;
