@@ -158,6 +158,8 @@ alter table public.payroll_salaries add column deposit_eligible_override boolean
 alter table public.payroll_increments add column deposit_eligible_override boolean;
 alter table public.payroll_salaries add column pt_override numeric(14,2) check(pt_override>=0);
 alter table public.payroll_increments add column pt_override numeric(14,2) check(pt_override>=0);
+create function payroll_private.pt_slab(monthly_gross numeric) returns numeric language sql immutable strict set search_path='' as $$select case when monthly_gross<=15000 then 0 when monthly_gross<=20000 then 150 else 200 end::numeric$$;
+revoke all on function payroll_private.pt_slab(numeric) from public,anon,authenticated;
 create function payroll_private.calculate(cid uuid,month_start date) returns uuid language plpgsql security definer set search_path='' as $$
 declare c public.payroll_companies; s public.payroll_staff; p public.payroll_profiles; sal public.payroll_salaries; att public.payroll_attendance;
  day date; last_day date; rid uuid; ndays int; remaining int; factor numeric; units numeric; lop numeric; paid numeric;
@@ -227,7 +229,7 @@ begin
   tds=round(greatest(0,p.annual_tax-p.tax_paid)/remaining,2);
   select coalesce(sum(amount),0) into balance from public.payroll_deposits where staff_id=s.id;
   deposit=case when coalesce((c.settings->>'deposit_enabled')::boolean,false) then round(least(deposit_base*0.10,greatest(0,(c.settings->>'deposit_cap')::numeric-balance)),2) else 0 end;
-  monthly_pt=coalesce((select v.pt_override from public.payroll_salaries v where v.staff_id=s.id and v.effective_from<=least(last_day,coalesce(s.leaving_date,last_day)) order by v.effective_from desc limit 1),p.pt,0);
+  monthly_pt=coalesce((select v.pt_override from public.payroll_salaries v where v.staff_id=s.id and v.effective_from<=least(last_day,coalesce(s.leaving_date,last_day)) order by v.effective_from desc limit 1),case when coalesce((c.settings->>'pt_auto_slabs')::boolean,false) and month_start>=nullif(c.settings->>'pt_effective_from','')::date then payroll_private.pt_slab(gross) else p.pt end,0);
   deductions=pf+esi+tds+deposit+coalesce(p.other_deductions,0)+monthly_pt;
   if deductions>wage/2 then issues=issues||jsonb_build_array('Deductions exceed the conservative 50% reviewed-wage limit');end if;
   if deductions>gross then issues=issues||jsonb_build_array('Negative net pay');end if;
@@ -504,6 +506,8 @@ begin
  elsif action='settings' then
   if r<>'admin' then raise exception 'Administrator access required';end if;
   j=payload->'settings';
+  if j ? 'pt_auto_slabs' and coalesce(j->>'pt_auto_slabs','') not in ('true','false') then raise exception 'Invalid PT slab setting';end if;
+  if coalesce((j->>'pt_auto_slabs')::boolean,false) and (nullif(j->>'pt_effective_from','') is null or (j->>'pt_effective_from')::date<>date_trunc('month',(j->>'pt_effective_from')::date)::date) then raise exception 'Select the first day of the PT policy month';end if;
   if not j ?& array['working_days','holidays','pf_rate','pf_employer_rate','pf_cap','esi_rate','esi_employer_rate','effective_from','deposit_cap','deposit_enabled','statutory_reviewed'] then raise exception 'Missing required policy settings';end if;
   if jsonb_typeof(j->'working_days')<>'array' or jsonb_array_length(j->'working_days')=0 then raise exception 'Set working weekdays';end if;
   if (j->>'pf_rate')::numeric not between 0 and 100 or (j->>'pf_employer_rate')::numeric not between 0 and 100 or (j->>'esi_rate')::numeric not between 0 and 100 or (j->>'esi_employer_rate')::numeric not between 0 and 100 or (j->>'pf_cap')::numeric<0 or (j->>'deposit_cap')::numeric<0 then raise exception 'Invalid rates or caps';end if;

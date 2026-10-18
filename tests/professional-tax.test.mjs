@@ -1,0 +1,6 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {professionalTaxSlab,professionalTaxPreview} from '../public/professional-tax.js';
+test('User PT slabs include both exact boundaries and paise immediately above them',()=>{for(const [gross,pt]of [[0,0],[14999.99,0],[15000,0],[15000.01,150],[15001,150],[19999.99,150],[20000,150],[20000.01,200],[20001,200]])assert.equal(professionalTaxSlab(gross),pt);assert.throws(()=>professionalTaxSlab(-1));assert.throws(()=>professionalTaxSlab(NaN));});
+test('Both salary types include all monthly allowances in the PT preview',()=>{const options={settings:{pt_auto_slabs:true,pt_effective_from:'2026-10-01'},month:'2026-10'};assert.equal(professionalTaxPreview({salary_mode:'consolidated',consolidated_amount:18000},options).amount,150);assert.equal(professionalTaxPreview({basic:14000,hod_allowance:2000},options).amount,150);});
+test('Explicit PT overrides, manual companies and pre-policy months retain their amounts',()=>{const options={settings:{pt_auto_slabs:true,pt_effective_from:'2026-10-01'},month:'2026-10',defaultAmount:175};assert.equal(professionalTaxPreview({basic:30000},{...options,override:0}).amount,0);assert.equal(professionalTaxPreview({basic:30000},{...options,month:'2026-09'}).amount,175);assert.equal(professionalTaxPreview({basic:30000},{...options,settings:{}}).amount,175);});
