@@ -1,3 +1,4 @@
+import {loginEmail} from './access.js';
 import {config} from './config.js';
 import {parseRecoveryLink} from './recovery.js';
 let session=null;
@@ -10,7 +11,7 @@ async function request(path,body,token){
   if(!res.ok)throw Error(data.msg||data.message||data.error_description||data.error||`Request failed (${res.status})`);
   return data;
 }
-export async function signIn(email,password){save(await request('/auth/v1/token?grant_type=password',{email:email.trim(),password}));sessionStorage.setItem('payroll-recovery','');}
+export async function signIn(email,password){save(await request('/auth/v1/token?grant_type=password',{email:loginEmail(email),password}));sessionStorage.setItem('payroll-recovery','');}
 export async function signUp(email,password){
   const r=await request('/auth/v1/signup',{email,password});
   if(r.access_token)save(r);
@@ -53,3 +54,5 @@ export async function rpc(action,payload={}){
   const request_id=payload.request_id||crypto.randomUUID();
   return request('/rest/v1/rpc/payroll_api',{action,payload:{...payload,request_id}},session.access_token);
 }
+
+export async function accountAction(payload){await refresh();return request("/functions/v1/payroll-accounts",payload,session.access_token);}

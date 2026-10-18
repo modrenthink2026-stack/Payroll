@@ -26,3 +26,5 @@ This project is separate from the existing construction project. Persistent payr
 Run `npm ci`, `npm test` and `npm run build`. Deploy `dist` to Vercel using the repository root. No service-role or database secrets belong in the browser. The included Supabase key is a public publishable key; database policies and authenticated RPC permissions enforce access.
 
 The earlier planning documents describe the broader target product. Features still pending are explicitly listed in the release status. Starter checks (`python3 checks/validate_starter.py`) check requirement coverage only and are separate from executed application tests.
+
+Current role access, name-based staff Login IDs and account activation: [Access and logins](docs/access-and-logins.md).

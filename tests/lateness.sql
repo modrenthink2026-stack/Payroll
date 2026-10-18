@@ -58,7 +58,7 @@ begin
  perform public.payroll_api('late_review',payload);perform public.payroll_api('late_review',payload);
  if (select (leave_balances->>'CL')::numeric from public.payroll_staff where id=sid)<>8.5 then raise exception 'CL not debited exactly once';end if;
  j=public.payroll_api('state',jsonb_build_object('company_id',cid));
- if jsonb_array_length(j->'profiles')<>0 or jsonb_array_length(j->'salaries')<>0 or jsonb_array_length(j->'staff_details')<>0 then raise exception 'Late reviewer gained private payroll access';end if;
+ if jsonb_array_length(j->'profiles')<>1 or jsonb_array_length(j->'salaries')<>0 or jsonb_array_length(j->'staff_details')<>0 then raise exception 'HR staff-entry scope or restricted salary access mismatch';end if;
  -- Table RLS: an unrelated manager cannot read the review.
  perform set_config('request.jwt.claims',jsonb_build_object('sub',outsider,'role','authenticated')::text,true);
  execute 'set local role authenticated';if exists(select 1 from public.payroll_late_reviews where company_id=cid) then raise exception 'Late review direct RLS leaked';end if;execute 'reset role';
