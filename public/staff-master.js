@@ -10,7 +10,7 @@ export function shiftMinutes(start,end,breakMinutes=0){
 }
 export function validateStaffImport(input,existing=[]){
  if(!input.length||input.length>500)throw Error('Upload between 1 and 500 staff rows');
- const codes=new Set(existing.map(s=>s.code.toLowerCase())),emails=new Set(existing.map(s=>s.email.toLowerCase())),bios=new Set(existing.map(s=>s.biometric_id).filter(Boolean));
+ const codes=new Set(existing.map(s=>s.code.toLowerCase())),emails=new Set(existing.map(s=>(s.email||'').toLowerCase())),bios=new Set(existing.map(s=>s.biometric_id).filter(Boolean));
  return input.map((source,i)=>{
   const fail=message=>{throw Error(`Row ${i+2}: ${message}`);};
   for(const key of Object.keys(source))if(!staffColumns.includes(key))fail('Unknown column '+key+'; use the downloaded template');

@@ -6,3 +6,5 @@
 
 /* Staff upload and assigned shift controls. */
 .page-head{flex-wrap:wrap;gap:16px}.page-head>.actions{flex-wrap:wrap}.form-grid>.check{align-self:center;min-height:44px}#staff-preview{margin-top:18px}#staff-preview .table-wrap{max-height:340px;overflow:auto}
+
+.personnel-fields{border:1px solid var(--line);padding:16px;border-radius:10px}.personnel-fields summary{cursor:pointer;font-weight:700;padding:8px 0}.personnel-fields[open] summary{margin-bottom:16px}
