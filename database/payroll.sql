@@ -149,11 +149,11 @@ create policy staff_details_read on public.payroll_staff_details for select to a
 alter table public.payroll_salaries
  add column salary_mode text not null default 'component' check(salary_mode in ('component','consolidated')),
  add column consolidated_amount numeric(14,2) generated always as (case when salary_mode='consolidated' then other else 0 end) stored,
- add constraint payroll_salaries_consolidated_valid check(salary_mode<>'consolidated' or (basic=0 and da=0 and hra=0 and cca=0 and hod_allowance=0));
+ add constraint payroll_salaries_consolidated_valid check(salary_mode<>'consolidated' or (basic=0 and da=0 and hra=0 and cca=0));
 alter table public.payroll_increments
  add column salary_mode text not null default 'component' check(salary_mode in ('component','consolidated')),
  add column consolidated_amount numeric(14,2) generated always as (case when salary_mode='consolidated' then other else 0 end) stored,
- add constraint payroll_increments_consolidated_valid check(salary_mode<>'consolidated' or (basic=0 and da=0 and hra=0 and cca=0 and hod_allowance=0));
+ add constraint payroll_increments_consolidated_valid check(salary_mode<>'consolidated' or (basic=0 and da=0 and hra=0 and cca=0));
 alter table public.payroll_salaries add column deposit_eligible_override boolean;
 alter table public.payroll_increments add column deposit_eligible_override boolean;
 alter table public.payroll_salaries add column pt_override numeric(14,2) check(pt_override>=0);
@@ -163,7 +163,7 @@ revoke all on function payroll_private.pt_slab(numeric) from public,anon,authent
 create function payroll_private.calculate(cid uuid,month_start date) returns uuid language plpgsql security definer set search_path='' as $$
 declare c public.payroll_companies; s public.payroll_staff; p public.payroll_profiles; sal public.payroll_salaries; att public.payroll_attendance;
  day date; last_day date; rid uuid; ndays int; remaining int; factor numeric; units numeric; lop numeric; paid numeric;
- monthly_pt numeric; deposit_base numeric; deposit_all boolean; consolidated numeric; consolidated_days numeric; stat_wage numeric; cca numeric; hod numeric; b numeric; da numeric; hra numeric; other numeric; gross numeric; pf numeric; esi numeric; tds numeric; deposit numeric; balance numeric; wage numeric; deductions numeric;
+ monthly_pt numeric; deposit_base numeric; deposit_all boolean; consolidated numeric; consolidated_days numeric; component_hod numeric; stat_wage numeric; cca numeric; hod numeric; b numeric; da numeric; hra numeric; other numeric; gross numeric; pf numeric; esi numeric; tds numeric; deposit numeric; balance numeric; wage numeric; deductions numeric;
  issues jsonb; lr public.payroll_leaves; is_work boolean; lrpaid boolean; late_plan jsonb;late_review public.payroll_late_reviews;late_valid boolean;late_lop numeric;
 begin
  select * into c from public.payroll_companies where id=cid for update;
@@ -180,7 +180,7 @@ begin
  else insert into public.payroll_runs(company_id,month,created_by,input_hash,snapshot) values(cid,month_start,auth.uid(),payroll_private.fingerprint(cid),to_jsonb(c)) returning id into rid;end if;
  for s in select * from public.payroll_staff where company_id=cid and joining_date<=last_day and (leaving_date is null or leaving_date>=month_start) loop
   select * into p from public.payroll_profiles where staff_id=s.id;
-  deposit_base=0;deposit_all=true;consolidated=0;consolidated_days=0;cca=0;hod=0;b=0;da=0;hra=0;other=0;lop=0;paid=0;issues='[]';
+  deposit_base=0;deposit_all=true;component_hod=0;consolidated=0;consolidated_days=0;cca=0;hod=0;b=0;da=0;hra=0;other=0;lop=0;paid=0;issues='[]';
   late_plan=payroll_private.late_plan(s.id,month_start);
   select * into late_review from public.payroll_late_reviews where staff_id=s.id and month=month_start and status='active';
   late_valid=found and late_review.source_hash=late_plan->>'source_hash';
@@ -218,12 +218,12 @@ begin
    end if;
    factor=units/ndays;paid=paid+units;lop=lop+(1-units);
    if coalesce(sal.deposit_eligible_override,p.deposit_eligible,false) then deposit_base=deposit_base+(sal.basic+sal.da+sal.hra+sal.cca+sal.other+sal.hod_allowance)*factor;else deposit_all=false;end if;
-   b=b+sal.basic*factor;da=da+sal.da*factor;hra=hra+sal.hra*factor;if sal.salary_mode='consolidated' then consolidated=consolidated+sal.other*factor;consolidated_days=consolidated_days+1;else other=other+sal.other*factor;end if;cca=cca+sal.cca*factor;hod=hod+sal.hod_allowance*factor;
+   b=b+sal.basic*factor;da=da+sal.da*factor;hra=hra+sal.hra*factor;if sal.salary_mode='consolidated' then consolidated=consolidated+sal.other*factor;consolidated_days=consolidated_days+1;else other=other+sal.other*factor;end if;cca=cca+sal.cca*factor;hod=hod+sal.hod_allowance*factor;if sal.salary_mode<>'consolidated' then component_hod=component_hod+sal.hod_allowance*factor;end if;
   end loop;
   b=round(b,2);da=round(da,2);hra=round(hra,2);other=round(other,2);cca=round(cca,2);hod=round(hod,2);consolidated=round(consolidated,2);gross=b+da+hra+cca+other+hod+consolidated;
   deposit_base=case when deposit_all then gross else round(deposit_base,2) end;
   -- Reviewed statutory wage model: Basic+DA plus exclusion add-back. Employer must confirm suitability.
-  wage=greatest(b+da,gross/2);stat_wage=greatest(b+da,(gross-consolidated)/2);
+  wage=greatest(b+da,gross/2);stat_wage=greatest(b+da,(b+da+hra+cca+other+round(component_hod,2))/2);
   pf=case when p.pf_enabled then round(least(stat_wage,(c.settings->>'pf_cap')::numeric)*(c.settings->>'pf_rate')::numeric/100) else 0 end;
   esi=case when p.esi_enabled then ceil(stat_wage*(c.settings->>'esi_rate')::numeric/100) else 0 end;
   tds=round(greatest(0,p.annual_tax-p.tax_paid)/remaining,2);
@@ -234,7 +234,7 @@ begin
   if deductions>wage/2 then issues=issues||jsonb_build_array('Deductions exceed the conservative 50% reviewed-wage limit');end if;
   if deductions>gross then issues=issues||jsonb_build_array('Negative net pay');end if;
   insert into public.payroll_lines(staff_snapshot,deposit_opening,deposit_closing,company_id,run_id,staff_id,earnings,deductions,employer,gross,net,paid_days,lop,issues)
-  values(to_jsonb(s),balance,balance+deposit,cid,rid,s.id,(case when consolidated_days=0 or b+da+hra+cca+other+hod>0 then jsonb_build_object('Basic',b,'DA',da,'HRA',hra,'CCA',cca,'Allowances',other,'HOD/Coordinator Allowances',hod) else '{}'::jsonb end)||(case when consolidated_days>0 then jsonb_build_object('Consolidated salary',consolidated) else '{}'::jsonb end),
+  values(to_jsonb(s),balance,balance+deposit,cid,rid,s.id,(case when consolidated_days=0 or b+da+hra+cca+other>0 then jsonb_build_object('Basic',b,'DA',da,'HRA',hra,'CCA',cca,'Allowances',other) else '{}'::jsonb end)||(case when hod>0 or consolidated_days=0 then jsonb_build_object('HOD/Coordinator Allowances',hod) else '{}'::jsonb end)||(case when consolidated_days>0 then jsonb_build_object('Consolidated salary',consolidated) else '{}'::jsonb end),
   jsonb_build_object('PF',pf,'ESI',esi,'TDS',tds,'Security deposit',deposit,'Other deduction',coalesce(p.other_deductions,0),'PT',monthly_pt),
   jsonb_build_object('PF total',case when p.pf_enabled then round(least(stat_wage,(c.settings->>'pf_cap')::numeric)*(c.settings->>'pf_employer_rate')::numeric/100) else 0 end,'ESI',case when p.esi_enabled then ceil(stat_wage*(c.settings->>'esi_employer_rate')::numeric/100) else 0 end),gross,gross-deductions,paid,lop,issues);
   update public.payroll_lines set late_summary=late_plan-'events'-'source_hash'||jsonb_build_object('review_id',late_review.id,'review_valid',late_valid,'cl_days',case when late_valid then late_review.cl_units else 0 end,'lop_days',case when late_valid then (select count(*)*0.5 from jsonb_array_elements(late_review.decisions) d where d->>'decision'='lop') else 0 end) where run_id=rid and staff_id=s.id;
@@ -430,7 +430,7 @@ begin
   return out;
  end if;
  if action in ('staff_save','initial_salary','increment_save') and payload->>'salary_mode'='consolidated' then
-  payload=payload||jsonb_build_object('basic',0,'da',0,'hra',0,'cca',0,'hod_allowance',0,'other',coalesce(payload->>'consolidated_amount',payload->>'other','0'));
+  payload=payload||jsonb_build_object('basic',0,'da',0,'hra',0,'cca',0,'other',coalesce(payload->>'consolidated_amount',payload->>'other','0'));
  end if;
  -- Lock company first for all writes. This serializes payroll locking with staff/leave/input edits.
  select * into c from public.payroll_companies where id=cid for update;
@@ -855,7 +855,7 @@ begin
  perform 1 from public.payroll_staff where company_id=cid and id=any(ids) order by id for update;
  if (select count(*) from public.payroll_staff where company_id=cid and id=any(ids) and status='active' and department=payload->>'department')<>cardinality(ids) then raise exception 'Staff or department changed; reload the salary editor';end if;
  for j in select * from jsonb_array_elements(payload->'rows') loop
-  if j->>'salary_mode'='consolidated' then j=j||jsonb_build_object('basic',0,'da',0,'hra',0,'cca',0,'hod_allowance',0,'other',coalesce(j->>'consolidated_amount',j->>'other','0'));end if;
+  if j->>'salary_mode'='consolidated' then j=j||jsonb_build_object('basic',0,'da',0,'hra',0,'cca',0,'hod_allowance',coalesce(j->>'hod_allowance','0'),'other',coalesce(j->>'consolidated_amount',j->>'other','0'));end if;
   foreach amount_key in array array['basic','da','hra','cca','other','hod_allowance'] loop
    if coalesce(j->>amount_key,'') !~ '^[0-9]+(\.[0-9]{1,2})?$' then raise exception 'Enter non-negative amounts with at most two decimals';end if;
   end loop;

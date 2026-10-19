@@ -1,0 +1,26 @@
+-- Allow a separate HOD/Coordinator allowance on consolidated salary versions.
+alter table public.payroll_salaries drop constraint payroll_salaries_consolidated_valid;
+alter table public.payroll_salaries add constraint payroll_salaries_consolidated_valid check(salary_mode<>'consolidated' or (basic=0 and da=0 and hra=0 and cca=0));
+alter table public.payroll_increments drop constraint payroll_increments_consolidated_valid;
+alter table public.payroll_increments add constraint payroll_increments_consolidated_valid check(salary_mode<>'consolidated' or (basic=0 and da=0 and hra=0 and cca=0));
+do $patch$ declare src text; begin src=pg_get_functiondef('payroll_private.dispatch(text,jsonb)'::regprocedure);
+ if (length(src)-length(replace(src,'''cca'',0,''hod_allowance'',0,''other''','')))/length('''cca'',0,''hod_allowance'',0,''other''')<>1 then raise exception 'Consolidated HOD function changed; review required';end if;
+ src=replace(src,'''cca'',0,''hod_allowance'',0,''other''','''cca'',0,''other''');
+ execute src;end $patch$;
+do $patch$ declare src text; begin src=pg_get_functiondef('payroll_private.department_salaries(jsonb)'::regprocedure);
+ if (length(src)-length(replace(src,'''cca'',0,''hod_allowance'',0,''other''','')))/length('''cca'',0,''hod_allowance'',0,''other''')<>1 then raise exception 'Consolidated HOD function changed; review required';end if;
+ src=replace(src,'''cca'',0,''hod_allowance'',0,''other''','''cca'',0,''hod_allowance'',coalesce(j->>''hod_allowance'',''0''),''other''');
+ execute src;end $patch$;
+do $patch$ declare src text; begin src=pg_get_functiondef('payroll_private.calculate(uuid,date)'::regprocedure);
+ if (length(src)-length(replace(src,'stat_wage numeric;','')))/length('stat_wage numeric;')<>1 then raise exception 'Consolidated HOD function changed; review required';end if;
+ src=replace(src,'stat_wage numeric;','component_hod numeric; stat_wage numeric;');
+ if (length(src)-length(replace(src,'consolidated=0;consolidated_days=0;','')))/length('consolidated=0;consolidated_days=0;')<>1 then raise exception 'Consolidated HOD function changed; review required';end if;
+ src=replace(src,'consolidated=0;consolidated_days=0;','component_hod=0;consolidated=0;consolidated_days=0;');
+ if (length(src)-length(replace(src,'hod=hod+sal.hod_allowance*factor;','')))/length('hod=hod+sal.hod_allowance*factor;')<>1 then raise exception 'Consolidated HOD function changed; review required';end if;
+ src=replace(src,'hod=hod+sal.hod_allowance*factor;','hod=hod+sal.hod_allowance*factor;if sal.salary_mode<>''consolidated'' then component_hod=component_hod+sal.hod_allowance*factor;end if;');
+ if (length(src)-length(replace(src,'stat_wage=greatest(b+da,(gross-consolidated)/2);','')))/length('stat_wage=greatest(b+da,(gross-consolidated)/2);')<>1 then raise exception 'Consolidated HOD function changed; review required';end if;
+ src=replace(src,'stat_wage=greatest(b+da,(gross-consolidated)/2);','stat_wage=greatest(b+da,(b+da+hra+cca+other+round(component_hod,2))/2);');
+ if (length(src)-length(replace(src,'(case when consolidated_days=0 or b+da+hra+cca+other+hod>0 then jsonb_build_object(''Basic'',b,''DA'',da,''HRA'',hra,''CCA'',cca,''Allowances'',other,''HOD/Coordinator Allowances'',hod) else ''{}''::jsonb end)','')))/length('(case when consolidated_days=0 or b+da+hra+cca+other+hod>0 then jsonb_build_object(''Basic'',b,''DA'',da,''HRA'',hra,''CCA'',cca,''Allowances'',other,''HOD/Coordinator Allowances'',hod) else ''{}''::jsonb end)')<>1 then raise exception 'Consolidated HOD function changed; review required';end if;
+ src=replace(src,'(case when consolidated_days=0 or b+da+hra+cca+other+hod>0 then jsonb_build_object(''Basic'',b,''DA'',da,''HRA'',hra,''CCA'',cca,''Allowances'',other,''HOD/Coordinator Allowances'',hod) else ''{}''::jsonb end)','(case when consolidated_days=0 or b+da+hra+cca+other>0 then jsonb_build_object(''Basic'',b,''DA'',da,''HRA'',hra,''CCA'',cca,''Allowances'',other) else ''{}''::jsonb end)||(case when hod>0 or consolidated_days=0 then jsonb_build_object(''HOD/Coordinator Allowances'',hod) else ''{}''::jsonb end)');
+ execute src;end $patch$;
+notify pgrst,'reload schema';

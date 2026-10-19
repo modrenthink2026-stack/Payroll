@@ -3,10 +3,10 @@ export const consolidatedValue=s=>s.consolidated_amount!==undefined&&s.consolida
 export function salaryPayload(s){
  if(s.salary_mode!=='consolidated')return {...s,salary_mode:s.salary_mode||'component'};
  const amount=consolidatedValue(s);
- return {...s,basic:0,da:0,hra:0,cca:0,other:amount,hod_allowance:0,consolidated_amount:amount};
+ return {...s,basic:0,da:0,hra:0,cca:0,other:amount,consolidated_amount:amount};
 }
 export function salaryTotals(s={}){
- if(s.salary_mode==='consolidated'){const value=Math.round(Number(consolidatedValue(s))*100)/100;return {gross:value,cum_gross:value};}
+ if(s.salary_mode==='consolidated'){const value=Math.round(Number(consolidatedValue(s))*100)/100;return {gross:value,cum_gross:(Math.round(value*100)+Math.round(Number(s.hod_allowance||0)*100))/100};}
  const cents=k=>Math.round(Number(s[k]||0)*100);
  const gross=['basic','da','hra','cca','other'].reduce((n,k)=>n+cents(k),0);
  return {gross:gross/100,cum_gross:(gross+cents('hod_allowance'))/100};
