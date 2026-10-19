@@ -64,3 +64,5 @@ export async function assignShifts(payload){await refresh();return request('/res
 export async function saveDepartmentSalaries(payload){payload={...payload,rows:payload.rows.map(salaryPayload)};await refresh();return request('/rest/v1/rpc/payroll_department_salaries',{payload},session.access_token);}
 
 export async function assignUsernameRole(payload){await refresh();return request('/rest/v1/rpc/payroll_username_role',{payload},session.access_token);}
+
+export async function saveBulkLeaveBalances(payload){await refresh();return request('/rest/v1/rpc/payroll_bulk_leave_balances',{payload},session.access_token);}
