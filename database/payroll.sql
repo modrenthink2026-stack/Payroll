@@ -11,6 +11,11 @@ create table public.payroll_salaries(id uuid primary key default gen_random_uuid
 create table public.payroll_attendance(id uuid primary key default gen_random_uuid(),company_id uuid not null,staff_id uuid not null,work_date date not null,status text check(status in ('present','absent','half_day','holiday')) not null,in_time time,out_time time,late_minutes int not null default 0 check(late_minutes>=0),early_minutes int not null default 0 check(early_minutes>=0),note text default '',reviewed_by uuid references auth.users,unique(staff_id,work_date),foreign key(company_id,staff_id) references public.payroll_staff(company_id,id));
 create table public.payroll_punches(id uuid primary key default gen_random_uuid(),company_id uuid not null,staff_id uuid not null,device_id text not null,event_id text not null,event_time timestamptz not null,direction text not null check(direction in ('in','out')),created_at timestamptz default now(),unique(company_id,device_id,event_id),foreign key(company_id,staff_id) references public.payroll_staff(company_id,id));
 create table public.payroll_leave_policies(company_id uuid references public.payroll_companies not null,code text not null,annual_entitlement numeric(6,2) not null default 0 check(annual_entitlement>=0),paid boolean not null,description text default '',primary key(company_id,code));
+alter table public.payroll_leave_policies
+ add column name text not null default '' check(length(name)<=80),
+ add column active boolean not null default true,
+ add column half_day_allowed boolean not null default true,
+ add column max_days_per_request numeric(5,1) check(max_days_per_request>0 and max_days_per_request<=366 and mod(max_days_per_request,0.5)=0);
 create table public.payroll_leaves(id uuid primary key default gen_random_uuid(),company_id uuid not null,staff_id uuid not null,leave_type text not null,from_date date not null,to_date date not null,half_day boolean not null default false,units numeric(6,2) not null check(units>0),reason text not null,status text not null default 'submitted' check(status in ('submitted','approved','rejected','cancelled')),created_by uuid references auth.users,reviewed_by uuid references auth.users,created_at timestamptz default now(),foreign key(company_id,staff_id) references public.payroll_staff(company_id,id),foreign key(company_id,leave_type) references public.payroll_leave_policies(company_id,code),check(to_date>=from_date));
 create table public.payroll_leave_ledger(id uuid primary key default gen_random_uuid(),company_id uuid not null,staff_id uuid not null,leave_type text not null,units numeric(6,2) not null,reason text not null,leave_id uuid references public.payroll_leaves,event text not null,created_at timestamptz default now(),unique(leave_id,event),foreign key(company_id,staff_id) references public.payroll_staff(company_id,id));
 create table public.payroll_documents(id uuid primary key default gen_random_uuid(),company_id uuid not null,staff_id uuid,type text not null,recipient text not null,body text not null,number text,signatory text not null default '',status text not null default 'draft' check(status in ('draft','approved','issued','acknowledged')),created_by uuid references auth.users,approved_by uuid references auth.users,issued_at timestamptz,effective_date date,created_at timestamptz default now(),unique(company_id,number),foreign key(company_id,staff_id) references public.payroll_staff(company_id,id));
@@ -658,6 +663,7 @@ begin
   if units<=0 then raise exception 'No working leave days in this request';end if;
   select paid into paid_type from public.payroll_leave_policies where company_id=cid and code=payload->>'leave_type';
   if not found then raise exception 'Leave type not found';end if;
+  if not exists(select 1 from public.payroll_leave_policies where company_id=cid and code=payload->>'leave_type' and active and (not coalesce((payload->>'half_day')::boolean,false) or half_day_allowed) and (max_days_per_request is null or units<=max_days_per_request)) then raise exception 'Leave type is inactive, half-day is not allowed, or request exceeds the working-day maximum';end if;
   select coalesce(sum(l.units),0) into reserved from public.payroll_leaves l where staff_id=sid and status='submitted' and leave_type=payload->>'leave_type';
   if paid_type and units+reserved>coalesce((st.leave_balances->>(payload->>'leave_type'))::numeric,0) then raise exception 'Insufficient available leave balance';end if;
   insert into public.payroll_leaves(company_id,staff_id,leave_type,from_date,to_date,half_day,units,reason,created_by,approval_office) values(cid,sid,payload->>'leave_type',(payload->>'from_date')::date,(payload->>'to_date')::date,(payload->>'half_day')::boolean,units,payload->>'reason',uid,v_email) returning id into rec;
@@ -687,13 +693,26 @@ begin
   update public.payroll_leaves set status='cancelled' where id=rec and company_id=cid and created_by=uid and status='submitted';if not found then raise exception 'Only your pending request can be withdrawn';end if;
  elsif action='leave_credit' then
   if r not in ('admin','hr') then raise exception 'HR access required';end if;
+  if not exists(select 1 from public.payroll_leave_policies where company_id=cid and code=payload->>'leave_type' and paid) then raise exception 'Choose a valid paid leave type';end if;
+  if coalesce(payload->>'units','') !~ '^-?[0-9]+(\.[0-9]+)?$' or (payload->>'units')::numeric=0 or mod((payload->>'units')::numeric,0.5)<>0 then raise exception 'Balance adjustment must be nonzero in half-day steps';end if;
   units=(payload->>'units')::numeric;balance=coalesce((st.leave_balances->>(payload->>'leave_type'))::numeric,0)+units;
   if balance<0 or length(coalesce(payload->>'reason',''))<3 then raise exception 'Invalid balance or reason';end if;
   update public.payroll_staff set leave_balances=jsonb_set(leave_balances,array[payload->>'leave_type'],to_jsonb(balance)) where id=sid;
   insert into public.payroll_leave_ledger(company_id,staff_id,leave_type,units,reason,event) values(cid,sid,payload->>'leave_type',units,payload->>'reason','adjustment');
  elsif action='leave_policy' then
   if r not in ('admin','hr') then raise exception 'HR access required';end if;
-  insert into public.payroll_leave_policies(company_id,code,annual_entitlement,paid,description) values(cid,upper(payload->>'code'),(payload->>'annual_entitlement')::numeric,(payload->>'paid')::boolean,payload->>'description') on conflict(company_id,code) do update set annual_entitlement=excluded.annual_entitlement,description=excluded.description;
+  j=payload||jsonb_build_object('code',upper(trim(payload->>'code')));
+  if coalesce(j->>'code','') !~ '^[A-Z][A-Z0-9_]{0,15}$' then raise exception 'Use a leave code of 1–16 letters, numbers or underscores, starting with a letter';end if;
+  if nullif(payload->>'original_code','') is not null and payload->>'original_code'<>j->>'code' then raise exception 'Leave code cannot be renamed';end if;
+  if length(trim(coalesce(payload->>'name',j->>'code',''))) not between 1 and 80 or length(coalesce(payload->>'description',''))>4000 then raise exception 'Enter a leave name up to 80 characters and policy notes up to 4000';end if;
+  if coalesce(payload->>'annual_entitlement','') !~ '^[0-9]+(\.[0-9]+)?$' or (payload->>'annual_entitlement')::numeric>366 or mod((payload->>'annual_entitlement')::numeric,0.5)<>0 then raise exception 'Annual entitlement must be 0–366 days in half-day steps';end if;
+  if coalesce(payload->>'paid','') not in ('true','false') or coalesce(payload->>'active','true') not in ('true','false') or coalesce(payload->>'half_day_allowed','true') not in ('true','false') then raise exception 'Invalid leave rule option';end if;
+  if nullif(payload->>'max_days_per_request','') is not null and (coalesce(payload->>'max_days_per_request','') !~ '^[0-9]+(\.[0-9]+)?$' or (payload->>'max_days_per_request')::numeric<=0 or (payload->>'max_days_per_request')::numeric>366 or mod((payload->>'max_days_per_request')::numeric,0.5)<>0) then raise exception 'Maximum per request must be 0.5–366 working days in half-day steps, or blank';end if;
+  if coalesce((payload->>'creating')::boolean,false) and exists(select 1 from public.payroll_leave_policies where company_id=cid and code=j->>'code') then raise exception 'Leave code already exists; use Edit';end if;
+  if exists(select 1 from public.payroll_leave_policies where company_id=cid and code=j->>'code' and paid<>(payload->>'paid')::boolean) then raise exception 'Paid/unpaid cannot change on an existing leave type; create a new code';end if;
+  insert into public.payroll_leave_policies(company_id,code,name,annual_entitlement,paid,description,active,half_day_allowed,max_days_per_request)
+  values(cid,j->>'code',trim(coalesce(payload->>'name',j->>'code')),(payload->>'annual_entitlement')::numeric,(payload->>'paid')::boolean,coalesce(payload->>'description',''),coalesce((payload->>'active')::boolean,true),coalesce((payload->>'half_day_allowed')::boolean,true),nullif(payload->>'max_days_per_request','')::numeric)
+  on conflict(company_id,code) do update set name=excluded.name,annual_entitlement=excluded.annual_entitlement,description=excluded.description,active=excluded.active,half_day_allowed=excluded.half_day_allowed,max_days_per_request=excluded.max_days_per_request;
  elsif action='document_save' then
   if r not in ('admin','hr') then raise exception 'HR access required';end if;
   if length(coalesce(payload->>'body',''))<30 then raise exception 'Letter content is too short';end if;
