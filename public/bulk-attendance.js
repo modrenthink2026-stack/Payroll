@@ -1,1 +1,6 @@
 export function attendanceDraft(row){const a=row.attendance;return {staff_id:row.staff_id,source_hash:row.source_hash,status:a?.status||'present',in_time:a?.in_time?.slice(0,5)||'',out_time:a?.out_time?.slice(0,5)||'',late_minutes:a?.raw_late_minutes??a?.late_minutes??0,early_minutes:a?.early_minutes??0,calculate_shift:false,out_next_day:a?.shift_snapshot?.out_next_day??false,note:a?.note||''};}
+
+export function attendanceMatches(staff={},query=''){
+ const text=[staff.name,staff.code,staff.employee_ref].filter(Boolean).join(' ').toLowerCase();
+ return String(query).trim().toLowerCase().split(/\s+/).filter(Boolean).every(term=>text.includes(term));
+}
