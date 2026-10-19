@@ -66,3 +66,5 @@ export async function saveDepartmentSalaries(payload){payload={...payload,rows:p
 export async function assignUsernameRole(payload){await refresh();return request('/rest/v1/rpc/payroll_username_role',{payload},session.access_token);}
 
 export async function saveBulkLeaveBalances(payload){await refresh();return request('/rest/v1/rpc/payroll_bulk_leave_balances',{payload},session.access_token);}
+
+export async function bulkAttendance(payload){await refresh();return request('/rest/v1/rpc/payroll_bulk_attendance',{payload},session.access_token);}
