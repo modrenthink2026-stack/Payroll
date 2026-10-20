@@ -23,7 +23,7 @@ label.check{display:flex;align-items:center;gap:10px;margin:12px 0;line-height:1
 h1,h2,h3,p{margin-top:0}h1{font-size:28px;letter-spacing:-.8px;margin-bottom:8px;line-height:1.25}h2{font-size:17px;letter-spacing:-.25px}h3{font-size:14px}p{line-height:1.65}
 .muted,.small-text{color:var(--muted)}.small-text{font-size:12px}.number{text-align:right;font-variant-numeric:tabular-nums}
 .shell{display:block;min-height:100vh}
-.workspace-header{background:var(--surface);border-bottom:1px solid var(--line)}
+.workspace-header{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:1px solid var(--line);box-shadow:0 3px 12px #20345b0a}
 .workspace-header .brand{color:var(--ink);font-size:17px;padding:0;flex:none}
 .workspace-header .brand small{color:var(--muted)}
 .brand{color:#fff;font-weight:750;font-size:18px;display:flex;align-items:center;gap:10px;letter-spacing:-.5px;padding:0 8px}
