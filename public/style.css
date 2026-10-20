@@ -22,17 +22,16 @@ textarea{min-height:130px;resize:vertical}label{display:block;font-size:12px;fon
 label.check{display:flex;align-items:center;gap:10px;margin:12px 0;line-height:1.6}
 h1,h2,h3,p{margin-top:0}h1{font-size:28px;letter-spacing:-.8px;margin-bottom:8px;line-height:1.25}h2{font-size:17px;letter-spacing:-.25px}h3{font-size:14px}p{line-height:1.65}
 .muted,.small-text{color:var(--muted)}.small-text{font-size:12px}.number{text-align:right;font-variant-numeric:tabular-nums}
-.shell{display:grid;grid-template-columns:224px minmax(0,1fr);min-height:100vh}
-.sidebar{background:var(--sidebar);color:var(--sidebar-text);display:flex;flex-direction:column;padding:26px 14px;position:sticky;top:0;height:100vh;overflow-y:auto}
+.shell{display:block;min-height:100vh}
+.workspace-header{background:var(--surface);border-bottom:1px solid var(--line)}
+.workspace-header .brand{color:var(--ink);font-size:17px;padding:0;flex:none}
+.workspace-header .brand small{color:var(--muted)}
 .brand{color:#fff;font-weight:750;font-size:18px;display:flex;align-items:center;gap:10px;letter-spacing:-.5px;padding:0 8px}
 .brand-mark{display:grid;place-items:center;background:var(--accent);color:#fff;width:36px;height:36px;border-radius:11px;font-size:24px;flex:none}
 .brand small{display:block;font-size:9px;color:var(--sidebar-muted);letter-spacing:2px;margin-top:4px}
-.nav-label{font-size:10px;letter-spacing:1.6px;color:var(--sidebar-muted);margin:32px 12px 12px;font-weight:650}
-.nav{display:grid;gap:5px}.nav button{background:transparent;border:1px solid transparent;color:var(--sidebar-text);text-align:left;font-size:12px;display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:8px;font-weight:550}
-.nav button:hover{background:var(--sidebar-active)}.nav button.active{background:var(--sidebar-active);color:#fff;border-color:#ffffff18;box-shadow:inset 3px 0 0 var(--sidebar-text)}
+.nav{display:flex;gap:5px}.nav button{background:transparent;border:1px solid transparent;color:var(--sidebar-text);text-align:left;font-size:12px;display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:8px;font-weight:550}
+.nav button:hover{background:var(--sidebar-active)}.nav button.active{background:var(--sidebar-active);color:#fff;border-color:#ffffff18;box-shadow:inset 0 -2px 0 var(--sidebar-text)}
 .nav button:focus-visible{outline-color:#fff}.nav-icon{width:19px;height:19px;display:inline-flex;flex:none}.nav-icon svg{width:100%;height:100%}
-.sidebar-foot{margin-top:auto;padding:20px 10px 0;font-size:10px;border-top:1px solid #ffffff24;line-height:1.6;color:var(--sidebar-muted)}
-.sidebar-foot strong{display:block;color:#fff;margin:6px 0 8px;font-size:12px;overflow-wrap:anywhere}
 .topbar{min-height:74px;display:flex;align-items:center;justify-content:space-between;padding:14px 30px;background:var(--surface);border-bottom:1px solid var(--line);gap:16px;flex-wrap:wrap}
 .topbar select{width:220px;max-width:100%;padding:8px 10px;font-weight:650;border-color:var(--line)}
 .top-user{display:flex;align-items:center;gap:10px;font-size:12px;flex-wrap:wrap;min-width:0}.top-user .user-name{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -97,9 +96,9 @@ dialog.salary-editor td input[type=number]{width:120px}dialog.salary-editor td:f
 .theme-swatch{display:block;width:30px;height:30px;border-radius:9px;flex:none}.theme-selected{font-size:10px;margin-left:auto;font-weight:500}.theme-option strong{font-size:12px}
 .theme-swatch-indigo{background:#4c47c7}.theme-swatch-ocean{background:#0d668f}.theme-swatch-emerald{background:#17684e}.theme-swatch-plum{background:#803d82}.theme-swatch-graphite{background:#43536b}
 .mobile-brand{display:none}
-@media(max-width:1200px){.shell{grid-template-columns:200px minmax(0,1fr)}.main{padding:24px}.topbar{padding:14px 24px}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.report-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.login-art{padding:40px}.top-user .user-name{max-width:110px}}
+@media(max-width:1200px){.main{padding:24px}.topbar{padding:14px 24px}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.report-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.login-art{padding:40px}.top-user .user-name{max-width:110px}}
 @media(max-width:760px){
- .shell{display:block}.sidebar{position:static;height:auto;padding:10px;display:block;overflow:visible}.sidebar .brand,.nav-label,.sidebar-foot{display:none}
+ .workspace-header .brand{font-size:15px}.workspace-header .brand small{font-size:8px}
  .nav{display:flex;overflow-x:auto;gap:5px;padding:3px}.nav button{white-space:nowrap;padding:10px 12px;flex:none}.nav-icon{width:17px;height:17px}.nav button.active{box-shadow:inset 0 -2px 0 var(--sidebar-text)}
  .topbar{min-height:65px;padding:12px 16px;gap:12px}.topbar select{width:100%;max-width:none}.top-user{width:100%;gap:8px;justify-content:flex-start}.top-user .user-name,.top-user .avatar{display:none}.top-user>.actions{margin-left:auto}
  .main{padding:23px 15px}.page-head{align-items:flex-start;gap:14px}.page-head h1{font-size:25px}.page-head>.actions{gap:7px}.cards{gap:12px}.card{padding:16px}.card .value{font-size:22px}
@@ -110,5 +109,17 @@ dialog.salary-editor td input[type=number]{width:120px}dialog.salary-editor td:f
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}button:active{transform:none}}
 @media print{
- :root{--ink:#111;--line:#ddd}.sidebar,.topbar,.page-head,.toolbar,.actions,#toast,dialog,.no-print{display:none!important}.shell{display:block}.main{padding:0}.panel{border:0;box-shadow:none}.document{border:0}.print-only{display:block}.table-wrap{overflow:visible;border:0}body{background:white}table{white-space:normal;font-size:10px}.card{box-shadow:none}
+ :root{--ink:#111;--line:#ddd}.workspace-header,.topbar,.page-head,.toolbar,.actions,#toast,dialog,.no-print{display:none!important}.shell{display:block}.main{padding:0}.panel{border:0;box-shadow:none}.document{border:0}.print-only{display:block}.table-wrap{overflow:visible;border:0}body{background:white}table{white-space:normal;font-size:10px}.card{box-shadow:none}
+}
+
+/* Module navigation spans the workspace; no sidebar width is reserved. */
+.module-nav{background:var(--sidebar);padding:9px 30px;flex-wrap:wrap;align-items:center}
+.module-nav button{white-space:nowrap;flex:none;min-height:42px}
+.workspace-header>.topbar{gap:18px;justify-content:flex-start}
+.workspace-header .top-user{margin-left:auto}
+@media(max-width:1200px){.module-nav{padding:9px 24px}.workspace-header .brand{font-size:15px}.workspace-header .topbar select{width:205px}}
+@media(max-width:760px){
+ .workspace-header>.topbar{gap:12px}.workspace-header .topbar select{flex:1;min-width:145px;width:auto}
+ .workspace-header .top-user{margin-left:0}.module-nav{flex-wrap:nowrap;overflow-x:auto;padding:8px 12px;scrollbar-width:thin}
+ .module-nav button{min-height:42px}.workspace-header .brand-mark{width:30px;height:30px;border-radius:8px;font-size:21px}
 }
