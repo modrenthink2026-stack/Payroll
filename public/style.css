@@ -123,3 +123,24 @@ dialog.salary-editor td input[type=number]{width:120px}dialog.salary-editor td:f
  .workspace-header .top-user{margin-left:0}.module-nav{flex-wrap:nowrap;overflow-x:auto;padding:8px 12px;scrollbar-width:thin}
  .module-nav button{min-height:42px}.workspace-header .brand-mark{width:30px;height:30px;border-radius:8px;font-size:21px}
 }
+
+/* Staff master: wrap long records within columns; keep small-screen scrolling inside the table. */
+.staff-search-toolbar input{flex:1;min-width:0;width:100%;max-width:640px}
+.staff-master-panel table{table-layout:fixed;min-width:1080px;white-space:normal}
+.staff-master-panel th,.staff-master-panel td{white-space:normal;overflow-wrap:anywhere;vertical-align:top}
+.staff-master-panel th:nth-child(1){width:17%}
+.staff-master-panel th:nth-child(2){width:10%}
+.staff-master-panel th:nth-child(3){width:12%}
+.staff-master-panel th:nth-child(4){width:10%}
+.staff-master-panel th:nth-child(5){width:8%}
+.staff-master-panel th:nth-child(6){width:10%}
+.staff-master-panel th:nth-child(7){width:12%}
+.staff-master-panel th:nth-child(8){width:8%}
+.staff-master-panel th:nth-child(9){width:13%}
+.staff-master-panel .person,.staff-master-panel .person small{white-space:normal;overflow-wrap:anywhere;line-height:1.6}
+.staff-master-panel .pill{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.staff-master-panel .actions{align-items:flex-start;gap:6px}
+.staff-master-panel .actions button{max-width:100%;white-space:normal;overflow-wrap:anywhere;text-align:left}
+.staff-master-panel td:nth-child(6){font-variant-numeric:tabular-nums}
+@media(max-width:760px){.staff-master-panel{padding:12px}.staff-master-panel th,.staff-master-panel td{padding:10px}.staff-search-toolbar input{max-width:100%}}
+@media print{.staff-master-panel table{min-width:0}}
