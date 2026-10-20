@@ -1,0 +1,47 @@
+-- Synthetic records only; every write rolls back. Run after the payment-holds upgrade.
+begin;
+do $$
+declare u uuid;hr_user uuid=gen_random_uuid();acct uuid=gen_random_uuid();outsider uuid=gen_random_uuid();c uuid=gen_random_uuid();c2 uuid=gen_random_uuid();s uuid=gen_random_uuid();s2 uuid=gen_random_uuid();r uuid=gen_random_uuid();r2 uuid=gen_random_uuid();p jsonb;j jsonb;history jsonb;n integer;rejected boolean;
+begin
+ select user_id into u from public.payroll_members where role='admin' limit 1;
+ if u is null then raise exception 'Test requires a seeded confirmed administrator';end if;
+ insert into auth.users(id,email,email_confirmed_at) values(acct,'hold-qa-accountant@example.invalid',now()),(outsider,'hold-qa-outsider@example.invalid',now()),(hr_user,'hold-qa-hr@example.invalid',now());
+ insert into public.payroll_companies(id,name) values(c,'Hold QA rollback'),(c2,'Other tenant QA rollback');
+ insert into public.payroll_members values(c,u,'admin'),(c,acct,'accountant'),(c2,outsider,'admin'),(c,hr_user,'hr');
+ insert into public.payroll_staff(id,company_id,code,name,email,joining_date) values(s,c,'HOLD-A','Synthetic A','hold-a@example.invalid','2026-01-01'),(s2,c,'HOLD-B','Synthetic B','hold-b@example.invalid','2026-01-01');
+ insert into public.payroll_profiles(staff_id,company_id,bank_account,ifsc) values(s,c,'00123456789','SBIN0001234'),(s2,c,'00987654321','SBIN0001234');
+ insert into public.payroll_runs(id,company_id,month,status,input_hash,snapshot,created_by) values(r,c,'2026-10-01','released','qa','{}',u),(r2,c,'2026-09-01','released','qa','{}',u);
+ insert into public.payroll_lines(company_id,run_id,staff_id,earnings,deductions,employer,gross,net,paid_days,lop) values(c,r,s,'{"Basic":10000}','{}','{}',10000,10000,31,0),(c,r,s2,'{"Basic":20000}','{}','{}',20000,20000,31,0),(c,r2,s,'{"Basic":9000}','{}','{}',9000,9000,30,0);
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',hr_user,'role','authenticated')::text,true);
+ p=jsonb_build_object('company_id',c,'staff_id',s,'month','2026-10-01','status','held','reason','Pending authorized review','expected_revision',0,'request_id',gen_random_uuid());
+ j=public.payroll_api('salary_hold_set',p);if j->>'status'<>'held' then raise exception 'Hold not saved';end if;
+ if public.payroll_api('salary_hold_set',p) is distinct from j then raise exception 'Retry is not idempotent';end if;
+ rejected=false;begin perform public.payroll_api('salary_hold_set',p||jsonb_build_object('request_id',gen_random_uuid(),'status','released','expected_revision',1));exception when others then rejected=true;end;if not rejected then raise exception 'HR released payment';end if;
+ perform public.payroll_api('salary_hold_set',p||jsonb_build_object('request_id',gen_random_uuid(),'month','2026-11-01'));
+ rejected=false;begin perform public.payroll_api('salary_payment_state',jsonb_build_object('company_id',c,'id',r));exception when others then rejected=true;end;if not rejected then raise exception 'HR accessed bank salary data';end if;
+ j=public.payroll_api('state',jsonb_build_object('company_id',c));if jsonb_array_length(j->'lines')<>0 or jsonb_array_length(j->'salaries')<>0 or jsonb_array_length(j->'salary_holds')<>2 then raise exception 'HR hold access changed salary privacy';end if;
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',u,'role','authenticated')::text,true);
+ j=public.payroll_api('salary_payment_state',jsonb_build_object('company_id',c,'id',r));if jsonb_array_length(j->'rows')<>1 or (j->'rows'->0->>'staff_id')::uuid<>s2 then raise exception 'Held staff entered bank list';end if;
+ j=public.payroll_api('salary_payment_state',jsonb_build_object('company_id',c,'id',r2));if jsonb_array_length(j->'rows')<>1 then raise exception 'Hold affected another month';end if;
+ rejected=false;begin perform public.payroll_api('salary_hold_set',p||jsonb_build_object('request_id',gen_random_uuid(),'status','released','expected_revision',0));exception when others then rejected=true;end;if not rejected then raise exception 'Stale update accepted';end if;
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',acct,'role','authenticated')::text,true);
+ perform public.payroll_api('salary_hold_set',p||jsonb_build_object('request_id',gen_random_uuid(),'month','2026-12-01'));
+ rejected=false;begin perform public.payroll_api('salary_hold_set',p||jsonb_build_object('request_id',gen_random_uuid(),'status','released','expected_revision',1));exception when others then rejected=true;end;if not rejected then raise exception 'Accountant released held salary';end if;
+ p=jsonb_build_object('company_id',c,'id',r,'decision','paid','payment_reference','QA reconciled unheld staff','request_id',gen_random_uuid());
+ j=public.payroll_api('payroll_decide',p);if (j->>'reconciled_staff')::integer<>1 or (j->>'remaining_unpaid')::integer<>1 then raise exception 'Partial reconciliation failed';end if;
+ if exists(select 1 from public.payroll_lines where run_id=r and staff_id=s and payment_reference is not null) then raise exception 'Held salary marked paid';end if;
+ if (select status from public.payroll_runs where id=r)<>'released' then raise exception 'Partially unpaid run marked paid';end if;
+ if public.payroll_api('payroll_decide',p) is distinct from j then raise exception 'Payment retry is not idempotent';end if;
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',outsider,'role','authenticated')::text,true);
+ rejected=false;begin perform public.payroll_api('salary_payment_state',jsonb_build_object('company_id',c,'id',r));exception when others then rejected=true;end;if not rejected then raise exception 'Cross-tenant read accepted';end if;
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',u,'role','authenticated')::text,true);
+ perform public.payroll_api('salary_hold_set',jsonb_build_object('company_id',c,'staff_id',s,'month','2026-10-01','status','released','reason','Authorized release after review','expected_revision',1,'request_id',gen_random_uuid()));
+ j=public.payroll_api('salary_payment_state',jsonb_build_object('company_id',c,'id',r));if jsonb_array_length(j->'rows')<>1 or (j->'rows'->0->>'staff_id')::uuid<>s then raise exception 'Release lost or paid staff included twice';end if;
+ perform public.payroll_api('payroll_decide',jsonb_build_object('company_id',c,'id',r,'decision','paid','payment_reference','QA reconciled released salary','request_id',gen_random_uuid()));
+ if (select status from public.payroll_runs where id=r)<>'paid' then raise exception 'Fully paid run not finalized';end if;
+ rejected=false;begin perform public.payroll_api('salary_hold_set',jsonb_build_object('company_id',c,'staff_id',s,'month','2026-10-01','status','held','reason','Invalid hold after paid','expected_revision',2,'request_id',gen_random_uuid()));exception when others then rejected=true;end;if not rejected then raise exception 'Already paid salary held';end if;
+ history=public.payroll_api('salary_hold_history',jsonb_build_object('company_id',c,'month','2026-10-01'));if jsonb_array_length(history)<>2 then raise exception 'Hold/release history incomplete';end if;
+ if exists(select 1 from public.payroll_lines where run_id=r and (gross<>net or lop<>0)) or exists(select 1 from public.payroll_staff where id in(s,s2) and status<>'active') then raise exception 'Hold changed payroll or service';end if;
+ if has_table_privilege('authenticated','payroll_private.salary_payment_holds','insert') or has_table_privilege('anon','payroll_private.salary_payment_holds','select') then raise exception 'Direct hold table exposed';end if;
+end$$;
+rollback;
