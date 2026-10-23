@@ -57,6 +57,9 @@ export async function rpc(action,payload={}){
   return request('/rest/v1/rpc/payroll_api',{action,payload:{...payload,request_id}},session.access_token);
 }
 
+export async function saveBulkLeaveBalances(payload){await refresh();return request('/rest/v1/rpc/payroll_bulk_leave_balances',{payload},session.access_token);}
+
+export async function bulkAttendance(payload){await refresh();return request('/rest/v1/rpc/payroll_bulk_attendance',{payload},session.access_token);}
 export async function accountAction(payload){await refresh();return request("/functions/v1/payroll-accounts",payload,session.access_token);}
 
 export async function assignShifts(payload){await refresh();return request('/rest/v1/rpc/payroll_assign_shifts',{payload},session.access_token);}
@@ -65,6 +68,4 @@ export async function saveDepartmentSalaries(payload){payload={...payload,rows:p
 
 export async function assignUsernameRole(payload){await refresh();return request('/rest/v1/rpc/payroll_username_role',{payload},session.access_token);}
 
-export async function saveBulkLeaveBalances(payload){await refresh();return request('/rest/v1/rpc/payroll_bulk_leave_balances',{payload},session.access_token);}
-
-export async function bulkAttendance(payload){await refresh();return request('/rest/v1/rpc/payroll_bulk_attendance',{payload},session.access_token);}
+export async function systemUsers(payload){await refresh();return request('/rest/v1/rpc/payroll_system_users',{payload},session.access_token);}

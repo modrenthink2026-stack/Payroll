@@ -17,10 +17,21 @@ export function createHandler({url,publicKey,adminKey,fetcher=fetch}){
    if(typeof password!=='string'||password.length<12)return reply(400,{error:'Use a temporary or new password of at least 12 characters'});
    if(body.action==='change_password'){
     if(!user.app_metadata?.payroll_password_change_required)return reply(400,{error:'No first-login password change pending'});
-    await call('/rest/v1/rpc/payroll_api','POST',{action:'staff_password_ready',payload:{}});
+    if(user.app_metadata?.payroll_system_user_id)await call('/rest/v1/rpc/payroll_system_users','POST',{payload:{action:'password_ready'}});
+    else await call('/rest/v1/rpc/payroll_api','POST',{action:'staff_password_ready',payload:{}});
     await call('/auth/v1/user','PUT',{password});
     await call('/auth/v1/admin/users/'+encodeURIComponent(user.id),'PUT',{app_metadata:{...user.app_metadata,payroll_password_change_required:false}},true);
     return reply(200,{password_changed:true,sign_in_again:true});
+   }
+   if(body.action==='create_system_user'){
+    const payload={company_id:body.company_id,username:body.username,name:body.name,role:body.role};
+    const plan=await call('/rest/v1/rpc/payroll_system_users','POST',{payload:{...payload,action:'prepare'}});
+    if(plan.linked)return reply(200,{username:plan.username,status:'already_active'});
+    const app_metadata={payroll_system_user_id:plan.id,payroll_company_id:body.company_id,payroll_password_change_required:true};
+    const account=plan.pending_user_id?{id:plan.pending_user_id}:await call('/auth/v1/admin/users','POST',{email:plan.email,password,email_confirm:true,app_metadata},true);
+    const user_id=account.id||account.user?.id;if(!user_id)throw Error('Account service returned no identity');
+    await call('/rest/v1/rpc/payroll_system_users','POST',{payload:{action:'link',company_id:body.company_id,id:plan.id,user_id}});
+    return reply(200,{username:plan.username,status:plan.pending_user_id?'resumed':'created'});
    }
    if(body.action!=='activate'||!Array.isArray(body.staff_ids)||body.staff_ids.length<1||body.staff_ids.length>25||typeof body.company_id!=='string')return reply(400,{error:'Choose 1–25 staff in one company'});
    const results=[];
