@@ -5,3 +5,5 @@ __pycache__/
 !.env.example
 node_modules/
 dist/
+qa/
+supabase/.temp/

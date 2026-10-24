@@ -1,10 +1,10 @@
 # Platform administration
 
-Payroll now has a separate Platform Administration panel for the platform owner. It is not the same as a company Administrator: company roles remain limited to their assigned company.
+Payroll source includes a separate Platform Administration panel for the platform owner. Its backend was absent from the live database at the 24 October inspection; do not treat it as deployed until the repair migration is verified. It is not the same as a company Administrator: company roles remain limited to their assigned company.
 
 ## One-time bootstrap
 
-After applying `database/platform-admin-upgrade.sql`, explicitly register the platform owner in the database. Do not infer this from a company name or a user email:
+For a fresh installation, use the complete SQL emitted by `node scripts/database-install.mjs`. Existing installations use `supabase/migrations/20261024123135_payroll_reliability.sql` after confirming system-user and payment-hold prerequisites; never replay the baseline or table-creating upgrades. See `operations.md` for installation details. After verifying the backend, explicitly register the platform owner in an authorized administrative session. Do not infer this from a company name or a user email:
 
 ```sql
 insert into public.payroll_platform_admins(user_id, created_by)
@@ -23,4 +23,4 @@ The table is intentionally empty by default. This prevents every existing compan
 
 Module and pause checks run in database RPCs. Hiding navigation is only a convenience; direct writes through the main and bulk RPCs are rejected when the company or module is unavailable. Existing records remain readable through the ordinary company role checks.
 
-Apply the migration after the existing payroll schema, access-scope upgrade and system-user upgrade. Test the owner account, a selected company, an untouched company, a paused company, a disabled module, and a normal company Administrator before release.
+The repaired gateway composes the platform guard with `payment_dispatch`, preserving salary holds and payment reconciliation. Hold writes and history are mapped to the Payroll module, and bank eligibility requires released payroll. The isolated tests cover payment behavior after both platform/payment upgrade orders, paused and disabled payment controls, company-administrator isolation, and existing record readability. Test real owner access, a selected company, an untouched company and authenticated browser flows before release. Installing the backend never selects or grants an owner automatically.

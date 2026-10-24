@@ -1,4 +1,28 @@
-# v0.1 release evidence — 13 October 2026
+# Payroll release evidence
+
+## Reliability update — 24 October 2026
+
+The reliability fixes discard stale company responses, clear the previous workspace while loading, require released payroll and hold-aware backend eligibility for bank exports, preserve payment holds through platform upgrades, handle Windows test-file line endings, and select the default month in India time. Missing platform infrastructure now produces a visible warning rather than silently looking like an ordinary permissions result.
+
+| Check | Current evidence |
+|---|---|
+| Unit tests | 97 passed |
+| Baseline SQL scenarios | All 21 passed in isolated PGlite with synthetic fixtures |
+| Platform/payment integration and repair | Passed; no platform owner granted automatically |
+| Complete fresh install and reverse platform/payment upgrade order | Passed in isolated PGlite |
+| Public production login | Rendered in a fresh browser at https://payroll-orpin-one.vercel.app/ |
+| Updated browser suite | Passed in installed Chrome: eight modules, staff form, letter merge, mobile layout, staff navigation and paused-company rendering; mocked backend with real API client |
+| Live database repair | Applied and verified: release guard and payment/platform gateway present; all 24 existing payroll table counts and business-data hashes unchanged; 246 staff and 248 memberships preserved; zero new platform owners |
+| Frontend publication | Verify production app.js against the selected release commit; Vercel Git integration is the publication path |
+| Shared leaked-password protection | Still disabled; management credentials unavailable |
+
+The complete fresh installer is `node scripts/database-install.mjs`. Existing databases must use the checked repair path in `operations.md`, not replay the baseline. The repair migration is `supabase/migrations/20261024123135_payroll_reliability.sql` and requires existing system-user and payment-hold tables. Platform ownership remains an explicit separate grant.
+
+Real password/email onboarding, real bank processing, device integration, restore testing, current statutory rate review and production load testing remain outside this verification. Local fixtures do not establish production readiness.
+
+## Historical v0.1 evidence — 13 October 2026
+
+The following records the original build. Its deployment/browser blockers and test counts describe that date, not the current release status above.
 
 ## Implemented
 
