@@ -21,6 +21,10 @@ begin
  rejected=false;begin perform public.payroll_api('salary_payment_state',jsonb_build_object('company_id',c,'id',r));exception when others then rejected=true;end;if not rejected then raise exception 'HR accessed bank salary data';end if;
  j=public.payroll_api('state',jsonb_build_object('company_id',c));if jsonb_array_length(j->'lines')<>0 or jsonb_array_length(j->'salaries')<>0 or jsonb_array_length(j->'salary_holds')<>2 then raise exception 'HR hold access changed salary privacy';end if;
  perform set_config('request.jwt.claims',jsonb_build_object('sub',u,'role','authenticated')::text,true);
+ update public.payroll_runs set status='calculated' where id=r2;
+ rejected=false;begin perform public.payroll_api('salary_payment_state',jsonb_build_object('company_id',c,'id',r2));exception when others then if sqlerrm not like '%Release payroll%' then raise;end if;rejected=true;end;
+ if not rejected then raise exception 'Unreleased payroll entered bank list';end if;
+ update public.payroll_runs set status='released' where id=r2;
  j=public.payroll_api('salary_payment_state',jsonb_build_object('company_id',c,'id',r));if jsonb_array_length(j->'rows')<>1 or (j->'rows'->0->>'staff_id')::uuid<>s2 then raise exception 'Held staff entered bank list';end if;
  j=public.payroll_api('salary_payment_state',jsonb_build_object('company_id',c,'id',r2));if jsonb_array_length(j->'rows')<>1 then raise exception 'Hold affected another month';end if;
  rejected=false;begin perform public.payroll_api('salary_hold_set',p||jsonb_build_object('request_id',gen_random_uuid(),'status','released','expected_revision',0));exception when others then rejected=true;end;if not rejected then raise exception 'Stale update accepted';end if;
