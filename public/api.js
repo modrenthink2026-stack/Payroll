@@ -69,3 +69,4 @@ export async function saveDepartmentSalaries(payload){payload={...payload,rows:p
 export async function assignUsernameRole(payload){await refresh();return request('/rest/v1/rpc/payroll_username_role',{payload},session.access_token);}
 
 export async function systemUsers(payload){await refresh();return request('/rest/v1/rpc/payroll_system_users',{payload},session.access_token);}
+export async function platformAdmin(payload){await refresh();return request('/rest/v1/rpc/payroll_platform_admin',{payload},session.access_token);}

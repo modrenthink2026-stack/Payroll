@@ -26,3 +26,13 @@ test('Retries preserve already-created accounts and never reset their passwords'
 test('System users must pass the dedicated first-login readiness check before changing password',async()=>{
  const calls=[];const h=make(async(url,opts)=>{const b=opts.body?JSON.parse(opts.body):{};calls.push({url,b});return opts.method==='GET'?reply({id:'sys',app_metadata:{payroll_system_user_id:'reservation',payroll_password_change_required:true}}):reply({id:'sys'})});assert.equal((await h(request({action:'change_password',password:'Synthetic-New-123'}))).status,200);assert.ok(calls[1].url.endsWith('/rpc/payroll_system_users'));assert.equal(calls[1].b.payload.action,'password_ready');assert.ok(calls[2].url.endsWith('/auth/v1/user'));assert.equal(calls[3].b.app_metadata.payroll_password_change_required,false);
 });
+test('Platform administrator provisioning uses the cross-company RPC and keeps the password out of responses',async()=>{
+ const calls=[];const h=make(async(url,opts)=>{const body=opts.body?JSON.parse(opts.body):{};calls.push({url,body});
+  if(url.endsWith('/auth/v1/user'))return reply({id:'platform-owner'});
+  if(body.payload?.action==='prepare')return reply({id:'reservation',username:'company.admin',email:'company.admin@staff.payroll.invalid',linked:false});
+  if(url.endsWith('/admin/users'))return reply({id:'company-admin'});
+  if(body.payload?.action==='link')return reply({ok:true});throw Error('Unexpected call');
+ });
+ const r=await h(request({...input,platform_admin:true,company_id:'other-company',username:'company.admin'}));
+ assert.equal(r.status,200);assert.equal(calls[1].url,'https://auth.example.invalid/rest/v1/rpc/payroll_platform_user');assert.equal(calls.at(-1).url,'https://auth.example.invalid/rest/v1/rpc/payroll_platform_user');assert.ok(!JSON.stringify(await r.json()).includes(input.password));
+});

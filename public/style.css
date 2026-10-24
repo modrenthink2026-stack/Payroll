@@ -144,3 +144,4 @@ dialog.salary-editor td input[type=number]{width:120px}dialog.salary-editor td:f
 .staff-master-panel td:nth-child(6){font-variant-numeric:tabular-nums}
 @media(max-width:760px){.staff-master-panel{padding:12px}.staff-master-panel th,.staff-master-panel td{padding:10px}.staff-search-toolbar input{max-width:100%}}
 @media print{.staff-master-panel table{min-width:0}}
+ .platform-admin-grid{display:grid;grid-template-columns:minmax(180px,260px) 1fr;gap:24px;align-items:start;margin:20px 0}.platform-module-checks{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:12px}.platform-module-checks label{display:flex;gap:8px;align-items:center}.platform-admin-grid select{width:100%}@media(max-width:720px){.platform-admin-grid{grid-template-columns:1fr}}

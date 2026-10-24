@@ -25,12 +25,14 @@ export function createHandler({url,publicKey,adminKey,fetcher=fetch}){
    }
    if(body.action==='create_system_user'){
     const payload={company_id:body.company_id,username:body.username,name:body.name,role:body.role};
-    const plan=await call('/rest/v1/rpc/payroll_system_users','POST',{payload:{...payload,action:'prepare'}});
+    const platform=body.platform_admin===true;
+    const rpcPath=platform?'/rest/v1/rpc/payroll_platform_user':'/rest/v1/rpc/payroll_system_users';
+    const plan=await call(rpcPath,'POST',{payload:{...payload,action:'prepare'}});
     if(plan.linked)return reply(200,{username:plan.username,status:'already_active'});
     const app_metadata={payroll_system_user_id:plan.id,payroll_company_id:body.company_id,payroll_password_change_required:true};
     const account=plan.pending_user_id?{id:plan.pending_user_id}:await call('/auth/v1/admin/users','POST',{email:plan.email,password,email_confirm:true,app_metadata},true);
     const user_id=account.id||account.user?.id;if(!user_id)throw Error('Account service returned no identity');
-    await call('/rest/v1/rpc/payroll_system_users','POST',{payload:{action:'link',company_id:body.company_id,id:plan.id,user_id}});
+    await call(rpcPath,'POST',{payload:{action:'link',company_id:body.company_id,id:plan.id,user_id}});
     return reply(200,{username:plan.username,status:plan.pending_user_id?'resumed':'created'});
    }
    if(body.action!=='activate'||!Array.isArray(body.staff_ids)||body.staff_ids.length<1||body.staff_ids.length>25||typeof body.company_id!=='string')return reply(400,{error:'Choose 1–25 staff in one company'});
