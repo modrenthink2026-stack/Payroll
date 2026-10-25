@@ -43,10 +43,15 @@ try{
  await page.getByRole('button',{name:'Cancel',exact:true}).click();
  await page.setViewportSize({width:390,height:844});await page.getByLabel('Go to module').selectOption('overview');
  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:'qa/dashboard-mobile.png',fullPage:true});
- await page.getByLabel('Go to module').selectOption('staff');await page.getByRole('heading',{name:'Staff master',exact:true}).waitFor();
+ fixture.staff.push(...Array.from({length:35},(_,i)=>({...staff[0],id:'scroll-'+i,code:'SCROLL-'+i,name:'Synthetic scrolling staff '+i,email:'scroll-'+i+'@example.invalid'})));
+ await page.reload();await page.getByLabel('Go to module').selectOption('staff');await page.getByRole('heading',{name:'Staff master',exact:true}).waitFor();
  const table=page.locator('.staff-master-panel .table-wrap');await table.evaluate(element=>{element.scrollLeft=350;});
  const name=page.locator('.staff-master-panel tbody td').first();assert.ok(await name.isVisible());
  assert.ok((await name.boundingBox()).x>=0);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ await table.evaluate(element=>{element.scrollTop=200;});
+ const header=page.locator('.staff-master-panel th').first(),tableBounds=await table.boundingBox();
+ assert.equal(await header.evaluate(element=>getComputedStyle(element).position),'sticky');
+ assert.ok(Math.abs((await header.boundingBox()).y-tableBounds.y)<3);
  await page.screenshot({path:'qa/staff-mobile.png',fullPage:true});
  await page.setViewportSize({width:320,height:700});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
  await page.emulateMedia({media:'print'});
@@ -55,6 +60,8 @@ try{
  await page.emulateMedia({media:'screen'});
  role='staff';await page.reload();await page.getByLabel('Go to module').waitFor();
  assert.equal(await page.locator('#mobile-page option').count(),5);assert.equal(await page.getByRole('button',{name:'Company settings',exact:true}).count(),0);
+ co.enabled_modules={leave:true,payroll:false};await page.reload();await page.getByLabel('Go to module').waitFor();
+ assert.equal(await page.locator('#mobile-page option[value="payroll"]').count(),0);delete co.enabled_modules;
  paused=true;await page.reload();await page.getByText('Company workspace unavailable',{exact:true}).waitFor();assert.equal(await page.locator('#company-switch').count(),1);
  role='admin';paused=false;platformOwner=true;await page.setViewportSize({width:390,height:844});await page.reload();await page.getByRole('button',{name:'Platform Admin',exact:true}).click();
  assert.equal(await page.locator('[data-platform-module]:checked').count(),0);
