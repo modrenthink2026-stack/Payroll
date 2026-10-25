@@ -17,7 +17,7 @@ test('Unknown, ambiguous and mismatched identities, shifts and employment are re
  assert.throws(()=>prepareAbsenceReport(source,[...staff,{...staff[0],id:'s2'}]),/ambiguous/);
  for(const change of [{status:'separated'},{joining_date:'2026-10-01'},{leaving_date:'2026-09-03'}])assert.throws(()=>prepareAbsenceReport(source,[{...staff[0],...change}]),/inactive|employment/);
  assert.throws(()=>prepareAbsenceReport([...source,...source],staff),/Duplicate/);
- assert.throws(()=>prepareAbsenceReport([],staff));assert.throws(()=>prepareAbsenceReport(Array(1001).fill(source[0]),staff));
+ assert.throws(()=>prepareAbsenceReport([],staff));assert.throws(()=>prepareAbsenceReport(Array(15501).fill(source[0]),staff));
 });
 test('Leading zero IDs and normalized names survive without numeric coercion',()=>{
  const rows=[{...source[0],'Emp ID':'001','Emp Name':'t  r udaya kumari'}];

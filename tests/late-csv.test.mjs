@@ -26,7 +26,7 @@ test('Exact supplied report supports date-range preamble, blank rows, seconds an
  assert.equal(rows[2].in_time,'13:46:21');assert.equal(rows[2].work_date,'2026-09-17');
  assert.equal(prepareLateReport(single,staff)[0].late_minutes,2);
  for(const date of ['11-09-2026','2026-09-11'])assert.equal(prepareLateReport(single.replace('11-Sep-26',date),staff)[0].work_date,'2026-09-11');
- assert.throws(()=>prepareLateReport(lateTemplateCSV(),staff),/1 to 1,000/);
+ assert.throws(()=>prepareLateReport(lateTemplateCSV(),staff),/1 to 15,500/);
  const sujatha=rows.filter(r=>r.staff_id==='4').map(r=>({...r,minutes:r.late_minutes,date:r.work_date}));
  const plan=allocateLateAllowance(sujatha);assert.equal(plan.total_minutes,27);assert.equal(plan.used_minutes,14);assert.equal(plan.uncovered_minutes,13);
 });
@@ -40,7 +40,7 @@ test('Bad ranges, identities, duplicates, shifts and employment reject the repor
  assert.throws(()=>prepareLateReport(single,[staff[0],{...staff[0],id:'other'}]),/ambiguous/);
  assert.throws(()=>prepareLateReport('"unclosed',staff),/Unclosed/);
  assert.throws(()=>prepareLateReport('x'.repeat(2_000_001),staff),/2 MB/);
- assert.throws(()=>prepareLateReport(single.split('\n')[0]+'\n'+Array(1001).fill(single.split('\n')[1]).join('\n'),staff),/1,000/);
+ assert.throws(()=>prepareLateReport(single.split('\n')[0]+'\n'+Array(15501).fill(single.split('\n')[1]).join('\n'),staff),/15,500/);
 });
 test('Staging preserves snapshots, out time with seconds and early minutes without inventing a departure',()=>{
  const report=prepareLateReport(csv,staff);

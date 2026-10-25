@@ -15,7 +15,7 @@ try{
  await db.exec(`insert into auth.users(id,email,email_confirmed_at) values('10000000-0000-0000-0000-000000000001','sql-owner@example.invalid',now());
  insert into public.payroll_companies(id,name) values('20000000-0000-0000-0000-000000000001','Synthetic SQL owner');
  insert into public.payroll_members values('20000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','admin');`);
- const files=(await readdir(new URL('./',import.meta.url))).filter(f=>f.endsWith('.sql')&&f!=='platform-payment-controls.sql').sort();
+ const files=(await readdir(new URL('./',import.meta.url))).filter(f=>f.endsWith('.sql')&&f!=='platform-payment-controls.sql'&&f!=='monthly-attendance.sql').sort();
  for(const file of files){await db.exec(await sql('tests/'+file));console.log('PASS SQL '+file);}
 
  // Reproduce the older platform gateway, then repair it without losing records.
@@ -27,6 +27,9 @@ try{
  await db.exec(`create or replace function public.payroll_api(action text,payload jsonb default '{}') returns jsonb language sql security invoker set search_path='' as $$select payroll_private.dispatch(action,payload)$$;`);
  const before=(await db.query('select id,company_id,user_id,role from (select company_id as id,* from public.payroll_members) m order by id,user_id')).rows;
  await db.exec(await sql('supabase/migrations/20261024123135_payroll_reliability.sql'));
+ await db.exec(await sql('supabase/migrations/20261025170000_monthly_attendance_import.sql'));
+ await db.exec(await sql('tests/monthly-attendance.sql'));
+ console.log('PASS SQL monthly-attendance.sql');
  assert.deepEqual((await db.query(records)).rows,saved);
  await db.exec(await sql('tests/salary-payment-holds.sql'));
  await db.exec(await sql('tests/platform-payment-controls.sql'));
@@ -39,16 +42,17 @@ try{
  const reordered=new PGlite();
  try{
   await reordered.exec(`create role anon;create role authenticated;create schema auth;create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz,raw_app_meta_data jsonb default '{}');create function auth.uid() returns uuid language sql stable as $$select (nullif(current_setting('request.jwt.claims',true),'')::jsonb->>'sub')::uuid$$;`);
-  if(reverse){for(const file of ['payroll.sql','system-users-upgrade.sql','platform-admin-upgrade.sql','salary-payment-holds-upgrade.sql'])await reordered.exec(await sql('database/'+file));}
+  if(reverse){for(const file of ['payroll.sql','system-users-upgrade.sql','platform-admin-upgrade.sql','salary-payment-holds-upgrade.sql','monthly-attendance-upgrade.sql'])await reordered.exec(await sql('database/'+file));}
   else await reordered.exec(execFileSync(process.execPath,['scripts/database-install.mjs'],{encoding:'utf8',maxBuffer:2_000_000}));
   assert.ok((await reordered.query(`select pg_get_functiondef('public.payroll_api(text,jsonb)'::regprocedure) source`)).rows[0].source.includes('platform_action_guard'));
   await reordered.exec(`insert into auth.users(id,email,email_confirmed_at) values('10000000-0000-0000-0000-000000000001','reordered@example.invalid',now());insert into public.payroll_companies(id,name) values('20000000-0000-0000-0000-000000000001','Reordered');insert into public.payroll_members values('20000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','admin');`);
   await reordered.exec(await sql('tests/salary-payment-holds.sql'));
   await reordered.exec(await sql('tests/platform-payment-controls.sql'));
+  await reordered.exec(await sql('tests/monthly-attendance.sql'));
   console.log(reverse?'PASS reversed platform/payment upgrade order':'PASS complete fresh installation');
  }finally{await reordered.close();}
  }
- console.log(`PASS ${files.length} SQL suites plus repair and upgrade-order checks; synthetic in-memory data only.`);
+ console.log(`PASS ${files.length+1} SQL suites plus repair and upgrade-order checks; synthetic in-memory data only.`);
 }catch(error){failure=error;}
 finally{await db.close();}
 if(failure){console.error('FAIL SQL: '+failure.message);process.exitCode=1;}

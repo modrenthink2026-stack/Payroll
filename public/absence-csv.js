@@ -14,7 +14,7 @@ export function absenceDate(value){
 }
 
 export function prepareAbsenceReport(rows,staff){
- if(!rows.length||rows.length>1000)throw Error('Upload 1 to 1,000 absence rows');
+ if(!rows.length||rows.length>15500)throw Error('Upload 1 to 15,500 absence rows');
  const seen=new Set();
  return rows.map((r,i)=>{
   const fail=message=>{throw Error(`Report row ${i+2}: ${message}`);};

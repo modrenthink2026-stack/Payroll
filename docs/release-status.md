@@ -1,5 +1,13 @@
 # Payroll release evidence
 
+## Monthly all-department attendance uploads - 25 October 2026
+
+The three report upload buttons now open a whole-month preview without a department or day selector. Files include every department/date in the chosen month and can combine late/early details. The preview supports 15,500 employee/date rows with 100 displayed per page; edits and selections survive paging/search. HR can apply reviewed statuses to selected search matches. Needs review rows still block Save.
+
+The additive monthly RPC groups rows through the existing attendance writer inside one transaction; an error in any later department/date rolls back earlier writes. The dedicated SQL suite validates 1,023-row saving, atomicity, retries, role/company/module/password checks, stale data, payroll locks and completed late reviews. Existing raw-punch and daily department workflows remain available. Install `20261025170000_monthly_attendance_import.sql` before the frontend; the fresh installer includes it.
+
+Validation: 119 unit tests, 22 SQL suites plus repair/fresh/reverse-order checks, Chrome mocked-backend checks covering monthly combined reports, pagination/hidden selections, wrong-month denial and retry, and production build. A 500-person x 31-day CSV was parsed/staged as 15,500 distinct rows locally. Production publication and signed-in company testing are separate verification steps.
+
 ## Biometric report imports and attendance review — 25 October 2026
 
 Attendance now accepts the supplied absence, late-coming and early-going CSV formats through the existing department/date editor. Time reports support the optional From Date / To Date heading, blank rows, AM/PM values and seconds. Employee IDs match exact saved biometric IDs; employee names and report shifts are checked against Staff Master. Review and save each department/date separately.
