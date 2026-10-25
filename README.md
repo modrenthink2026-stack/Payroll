@@ -13,6 +13,8 @@ Confirmed scope: India payroll; 101–500 staff; individual staff logins; eSSL /
 - tests/: unit tests, rollback PostgreSQL scenario suites and optional Playwright UI tests.
 - scripts/build.mjs and vercel.json: deployment build and security headers.
 - docs/operations.md: login, onboarding, configuration and deployment instructions.
+- [Department attendance and biometric report uploads](docs/bulk-attendance.md): absence/early-going CSV formats, missing-punch review and department/date editing.
+- [Monthly lateness](docs/monthly-lateness.md): late-coming CSV format, the 25-minute allowance and authorized LOP/CL review.
 
 - docs/requirements.md: modules, calculation rules, roles, workflows and safeguards.
 - docs/software-review.md: current vendor benchmarks, sources and architecture choices.

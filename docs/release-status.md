@@ -1,5 +1,24 @@
 # Payroll release evidence
 
+## Biometric report imports and attendance review — 25 October 2026
+
+Attendance now accepts the supplied absence, late-coming and early-going CSV formats through the existing department/date editor. Time reports support the optional From Date / To Date heading, blank rows, AM/PM values and seconds. Employee IDs match exact saved biometric IDs; employee names and report shifts are checked against Staff Master. Review and save each department/date separately.
+
+Missing-punch, afternoon-arrival and morning-departure cases start as **Needs review — choose status**. Absence-report rows also require a deliberate status decision because missing punches do not prove absence. HR verifies evidence, corrects supported times/minutes and selects the reviewed status before saving. No punch time or full-day/half-day decision is inferred. Review flags remain unsaved drafts rather than a persistent pending-attendance queue.
+
+Late and early imports preserve the other side's times, minutes and edits staged in the same form. Completed whole late minutes remain subject to the existing monthly review; early-going minutes subtract the staff member's configured daily early grace and remain separate from the 25-minute late allowance. Save uses the existing attendance API and its company/role, stale-data, payroll-lock and completed-review checks. Raw punches remain separate. This frontend release requires no database migration and grants no new company or platform permissions.
+
+| Check | Release evidence |
+|---|---|
+| Unit tests | 115 passed, including the supplied report formats, missing punches, afternoon arrivals and combined late/early imports |
+| SQL regression suites | All 21 passed in isolated PGlite with synthetic fixtures; blank/unknown attendance statuses rejected |
+| Installation regressions | Repair preservation, complete fresh install and reverse platform/payment upgrade order passed in isolated PGlite |
+| Browser checks | Chrome suite passed for uploads, combined edits, save/retry, unresolved-status denial, fresh early grace, superseded uploads, closed editors, module screens, responsive layouts and role navigation; backend responses were mocked |
+| Production build | Passed |
+| Live deployment verification | Pending publication and verification against the selected release commit |
+
+No production employee attendance, salary or leave records were changed by these checks. Signed-in live company testing is separate from the mocked-browser and isolated-database evidence. See [department attendance and report uploads](bulk-attendance.md) and [monthly lateness](monthly-lateness.md) for the workflow and limits.
+
 ## Frontend refresh — 25 October 2026
 
 The frontend refresh introduces lighter navigation, clearer summary cards, compact pending-work panels, a restyled login and a mobile module selector. The selector uses the same role and company-module filters as desktop navigation. Staff names and headings stay visible inside scrollable staff tables; print output retains the full table.

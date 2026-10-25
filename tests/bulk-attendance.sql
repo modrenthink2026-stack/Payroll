@@ -48,6 +48,8 @@ begin
  jsonb_build_object('rows',jsonb_build_array(fresh->'rows'->0,fresh->'rows'->0)),
  jsonb_build_object('rows',jsonb_build_array((fresh->'rows'->0)||'{"late_minutes":-1}')),
  jsonb_build_object('rows',jsonb_build_array((fresh->'rows'->0)||'{"early_minutes":0.5}'))
+ ,jsonb_build_object('rows',jsonb_build_array((fresh->'rows'->0)||'{"status":""}'))
+ ,jsonb_build_object('rows',jsonb_build_array((fresh->'rows'->0)||'{"status":"pending"}'))
  )) loop
   caught=false;begin perform public.payroll_bulk_attendance(fresh||j||jsonb_build_object('request_id',gen_random_uuid()));exception when others then caught=true;end;if not caught then raise exception 'Invalid department attendance accepted';end if;
  end loop;
