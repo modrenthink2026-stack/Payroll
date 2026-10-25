@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-25
+
+- Refresh dashboard cards, pending-work summaries, navigation, login and table styling.
+- Add a labelled mobile module selector using the same company and role permissions as desktop navigation.
+- Keep staff names and column headings visible when scrolling long staff tables, with larger touch controls and responsive payroll-month actions.
+- Verify desktop, 390px and 320px layouts, mobile module selection and staff-table scrolling in Chrome.
+
 ## 2026-10-24
 
 - Discard stale company responses and clear the previous workspace while loading.

@@ -1,5 +1,11 @@
 # Payroll release evidence
 
+## Frontend refresh — 25 October 2026
+
+The frontend refresh introduces lighter navigation, clearer summary cards, compact pending-work panels, a restyled login and a mobile module selector. The selector uses the same role and company-module filters as desktop navigation. Staff names and headings stay visible inside scrollable staff tables; print output retains the full table.
+
+Validation: 97 unit tests passed. The Chrome suite passed across eight module screens, staff creation and letter forms, 390px and 320px layouts, mobile module selection, staff-table scrolling and restricted staff navigation. Backend responses in this suite are mocked. This update requires no database migration.
+
 ## Reliability update — 24 October 2026
 
 The reliability fixes discard stale company responses, clear the previous workspace while loading, require released payroll and hold-aware backend eligibility for bank exports, preserve payment holds through platform upgrades, handle Windows test-file line endings, and select the default month in India time. Missing platform infrastructure now produces a visible warning rather than silently looking like an ordinary permissions result.
