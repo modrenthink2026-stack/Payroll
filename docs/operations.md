@@ -57,3 +57,8 @@ Before production staff onboarding, finish browser validation, enable appropriat
 ## Running the regression checks
 
 Run `npm ci`, `npm test`, `npm run test:db` and `npm run build`. SQL checks use synthetic, in-memory PGlite databases and never connect to production. For browser checks, install Chromium with `npx playwright install chromium`, then run `npm run test:ui`. On Windows with Chrome installed, use `$env:PAYROLL_BROWSER_CHANNEL='chrome'; npm run test:ui`. Browser requests use the real API client with a mocked backend; screenshots go to ignored `qa/`. These are separate from real-account production checks.
+
+
+## Monthly attendance upload upgrade
+
+Deploy `supabase/migrations/20261025170000_monthly_attendance_import.sql` before publishing the monthly-upload frontend. It adds `payroll_private.monthly_attendance(jsonb)` and `payroll_monthly_attendance(jsonb)` without changing employee records or existing function definitions. It requires the existing `bulk_attendance` writer and `platform_direct_guard` module guard from the reliability installation. Fresh installs include the equivalent `database/monthly-attendance-upgrade.sql` after platform setup. The frontend fails closed when the endpoint is unavailable; do not substitute sequential browser saves, which could leave a partly imported month. Validate with `npm test`, `npm run test:db`, the Chrome UI suite and `npm run build`. The monthly SQL suite saves 1,023 synthetic rows and verifies rollback across later department failures, stale snapshots, roles, company isolation, paused modules, payroll locks and retries.

@@ -8,7 +8,7 @@ try{
  await mkdir('qa',{recursive:true});
  const user={id:'test-admin',email:'qa-admin@example.invalid'};
  const co={id:'test-company',name:'Northfield Industries',address:'Hyderabad, India',settings:{working_days:[1,2,3,4,5,6],holidays:[],pf_rate:12,pf_employer_rate:12,pf_cap:25000,esi_rate:.75,esi_employer_rate:3.25,statutory_reviewed:false,effective_from:'2026-10-01',deposit_enabled:false,deposit_cap:0}};
- const staff=[{id:'s1',code:'EMP-001',biometric_id:'1',shift_name:'General-1',shift_start:'07:56:00',shift_end:'18:00:00',name:'Sample Staff A',login_name:'sample.staff.a',email:'staff-a@example.invalid',designation:'Site Engineer',department:'Engineering',joining_date:'2026-10-01',service_status:'probation',status:'active',leave_balances:{CL:12,SL:12,EL:0}},{id:'s2',code:'EMP-002',name:'Sample Staff B',email:'staff-b@example.invalid',designation:'HR Executive',department:'Human Resources',joining_date:'2026-10-01',service_status:'confirmed',status:'active',leave_balances:{CL:8,SL:10,EL:3}}];
+ const staff=[{id:'s1',code:'EMP-001',biometric_id:'1',shift_name:'General-1',shift_start:'07:56:00',shift_end:'18:00:00',name:'Sample Staff A',login_name:'sample.staff.a',email:'staff-a@example.invalid',designation:'Site Engineer',department:'Engineering',joining_date:'2026-10-01',service_status:'probation',status:'active',leave_balances:{CL:12,SL:12,EL:0}},{id:'s2',code:'EMP-002',biometric_id:'2',shift_name:'General-1',shift_start:'09:00:00',shift_end:'18:00:00',name:'Sample Staff B',email:'staff-b@example.invalid',designation:'HR Executive',department:'Human Resources',joining_date:'2026-10-01',service_status:'confirmed',status:'active',leave_balances:{CL:8,SL:10,EL:3}}];
  const fixture={staff,salaries:staff.map(s=>({staff_id:s.id,effective_from:'2026-10-01',basic:20000,da:2000,hra:5000,other:3000})),profiles:[],attendance:[],punches:[],policies:[{code:'CL',name:'Casual leave',paid:true,annual_entitlement:12}],leaves:[],documents:[],assessments:[],increments:[],runs:[],lines:[],deposits:[],audit:[],salary_holds:[]};
  let role='admin',paused=false,platformOwner=false,bulkSaveError=false;const calls=[],errors=[];
  const page=await browser.newPage({viewport:{width:1440,height:1050}});
@@ -19,6 +19,11 @@ try{
   const path=new URL(route.request().url()).pathname;
   if(path.startsWith('/supabase/')){
    if(path.endsWith('/payroll_platform_admin'))return route.fulfill(platformOwner?{json:{companies:[{id:co.id,name:co.name,status:'active',modules:{},revision:0,staff:2,members:1}]}}:{status:403,json:{message:'Platform administrator access required'}});
+   if(path.endsWith('/payroll_monthly_attendance')){
+    const {payload}=route.request().postDataJSON();calls.push({action:'monthly_attendance',payload});
+    if(payload.mode==='save'&&bulkSaveError)return route.fulfill({status:400,json:{message:'Payroll month is locked; use a reviewed adjustment'}});
+    return route.fulfill({json:payload.mode==='load'?payload.rows.map(r=>({...r,source_hash:r.staff_id+'/'+r.work_date+'/v1',staff:staff.find(s=>s.id===r.staff_id),attendance:null})):{updated:payload.rows.length}});
+   }
    if(path.endsWith('/payroll_bulk_attendance')){
     const {payload}=route.request().postDataJSON();calls.push({action:'bulk_attendance',payload});
     if(payload.mode==='save'&&bulkSaveError)return route.fulfill({status:400,json:{message:'Payroll month is locked; use a reviewed adjustment'}});
@@ -36,7 +41,7 @@ try{
   await page.locator('nav').getByRole('button',{name:title,exact:true}).click();assert.ok((await page.locator('main').innerText()).length>40);
  }
  await page.locator('nav').getByRole('button',{name:'Attendance',exact:true}).click();
- await page.getByRole('button',{name:'Upload absence report',exact:true}).click();
+ await page.getByRole('button',{name:'Attendance bulk edit \u2014 department',exact:true}).click();
  await page.getByLabel('Department',{exact:true}).selectOption('d:Engineering');
  await page.getByLabel('Attendance date',{exact:true}).fill('2026-11-04');
  await page.getByRole('button',{name:'Load staff & attendance',exact:true}).click();
@@ -63,7 +68,7 @@ try{
  assert.equal(saved.company_id,co.id);assert.equal(saved.department,'Engineering');assert.equal(saved.work_date,'2026-11-04');assert.equal(saved.rows.length,1);
  assert.equal(saved.rows[0].source_hash,'snapshot-1');assert.equal(saved.rows[0].status,'absent');assert.equal(saved.rows[0].in_time,'');assert.equal(saved.rows[0].early_minutes,'0');
  assert.equal(saved.rows[0].note,'Prior review · Biometric absence report: General-1');assert.ok(saved.request_id);
- await page.getByRole('button',{name:'Upload late-coming report',exact:true}).click();
+ await page.getByRole('button',{name:'Attendance bulk edit \u2014 department',exact:true}).click();
  await page.getByLabel('Department',{exact:true}).selectOption('d:Engineering');
  await page.getByLabel('Attendance date',{exact:true}).fill('2026-11-04');
  await page.getByRole('button',{name:'Load staff & attendance',exact:true}).click();
@@ -101,7 +106,7 @@ try{
  assert.equal(lateSaves[0].payload.request_id,lateSaves[1].payload.request_id);
  const lateSaved=lateSaves[1].payload.rows[0];
  assert.equal(lateSaved.in_time,'13:46:21');assert.equal(lateSaved.late_minutes,'350');assert.equal(lateSaved.status,'present');assert.equal(lateSaved.early_minutes,'2');assert.equal(lateSaved.source_hash,'snapshot-1');
- await page.getByRole('button',{name:'Upload early-going report',exact:true}).click();
+ await page.getByRole('button',{name:'Attendance bulk edit \u2014 department',exact:true}).click();
  await page.getByLabel('Department',{exact:true}).selectOption('d:Engineering');
  await page.getByLabel('Attendance date',{exact:true}).fill('2026-11-04');
  await page.getByRole('button',{name:'Load staff & attendance',exact:true}).click();
@@ -132,7 +137,7 @@ try{
  await page.waitForFunction(()=>!document.querySelector('#modal').open);
  const earlySaved=calls.filter(c=>c.action==='bulk_attendance'&&c.payload.mode==='save').at(-1).payload;
  assert.equal(earlySaved.rows.length,1);assert.equal(earlySaved.rows[0].in_time,'13:47:21');assert.equal(earlySaved.rows[0].late_minutes,'351');assert.equal(earlySaved.rows[0].out_time,'17:57:31');assert.equal(earlySaved.rows[0].early_minutes,'2');assert.equal(earlySaved.rows[0].source_hash,'snapshot-1');assert.ok(earlySaved.rows[0].note.includes('Biometric early report'));assert.ok(earlySaved.rows[0].note.includes('Biometric late report'));assert.ok(earlySaved.request_id);
- await page.getByRole('button',{name:'Upload late-coming report',exact:true}).click();
+ await page.getByRole('button',{name:'Attendance bulk edit \u2014 department',exact:true}).click();
  await page.getByLabel('Department',{exact:true}).selectOption('d:Engineering');
  await page.getByLabel('Attendance date',{exact:true}).fill('2026-11-04');
  await page.getByRole('button',{name:'Load staff & attendance',exact:true}).click();
@@ -159,14 +164,14 @@ try{
  const reviewed=calls.filter(c=>c.action==='bulk_attendance'&&c.payload.mode==='save').at(-1).payload.rows[0];
  assert.equal(reviewed.status,'half_day');assert.equal(reviewed.in_time,'09:05:00');assert.equal(reviewed.out_time,'');assert.equal(reviewed.late_minutes,'5');
  // A prior editor's upload cannot touch a new editor with the same date/filter.
- await page.getByRole('button',{name:'Upload late-coming report',exact:true}).click();
+ await page.getByRole('button',{name:'Attendance bulk edit \u2014 department',exact:true}).click();
  await page.getByLabel('Department',{exact:true}).selectOption('d:Engineering');
  await page.getByLabel('Attendance date',{exact:true}).fill('2026-11-04');
  await page.getByRole('button',{name:'Load staff & attendance',exact:true}).click();
  await page.locator('[data-attendance-pick="0"]').waitFor();
  await startSlowLate(lateCSV.replace('1:46:21 PM','1:40:00 PM'));
  await page.getByRole('button',{name:'Cancel',exact:true}).click();
- await page.getByRole('button',{name:'Upload late-coming report',exact:true}).click();
+ await page.getByRole('button',{name:'Attendance bulk edit \u2014 department',exact:true}).click();
  await page.getByLabel('Department',{exact:true}).selectOption('d:Engineering');
  await page.getByLabel('Attendance date',{exact:true}).fill('2026-11-04');
  await page.getByRole('button',{name:'Load staff & attendance',exact:true}).click();
@@ -179,6 +184,52 @@ try{
  await page.getByRole('button',{name:'Import biometric CSV',exact:true}).click();
  await page.getByRole('heading',{name:'Import biometric punches',exact:true}).waitFor();
  await page.getByRole('button',{name:'Close',exact:true}).click();
+ // Primary report actions upload the entire month with no department/date picker.
+ await page.locator('nav').getByRole('button',{name:'Attendance',exact:true}).click();
+ const openMonth=async name=>{await page.getByRole('button',{name,exact:true}).click();await page.getByLabel('Report month',{exact:true}).fill('2026-11');};
+ const monthlyUpload=(kind,text)=>page.locator('#monthly-'+kind+'-file').setInputFiles({name:'month.csv',mimeType:'text/csv',buffer:Buffer.from(text)});
+ const monthlyAbsence='Date,Emp ID,Emp Name,Department,Shift\n01-Nov-26,1,Sample Staff A,Engineering,General-1\n30-Nov-26,2,Sample Staff B,Human Resources,General-1';
+ await openMonth('Upload absence report');assert.equal(await page.locator('#f-attendance_department').count(),0);assert.equal(await page.locator('#f-attendance_date').count(),0);
+ await monthlyUpload('absence',monthlyAbsence);await page.getByText('2 report rows loaded across all departments and dates.',{exact:false}).waitFor();
+ assert.ok((await page.locator('#monthly-count').innerText()).includes('2 departments and 2 dates'));assert.equal(await page.locator('[data-monthly-pick]').count(),2);
+ await page.getByLabel('Monthly attendance review reason',{exact:true}).fill('Verified monthly absences across departments');
+ const monthlySaveCount=()=>calls.filter(c=>c.action==='monthly_attendance'&&c.payload.mode==='save').length;
+ await page.getByRole('button',{name:'Save',exact:true}).click();await page.getByText('Choose a reviewed status for every selected row, including other pages',{exact:true}).waitFor();assert.equal(monthlySaveCount(),0);
+ await page.getByLabel('Reviewed status for selected matching rows',{exact:true}).selectOption('absent');await page.getByRole('button',{name:'Apply reviewed status',exact:true}).click();
+ await page.getByRole('button',{name:'Save',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('#modal').open);
+ const absentMonth=calls.filter(c=>c.action==='monthly_attendance'&&c.payload.mode==='save').at(-1).payload;
+ assert.equal(absentMonth.rows.length,2);assert.equal(absentMonth.month,'2026-11-01');assert.deepEqual(absentMonth.rows.map(r=>r.work_date),['2026-11-01','2026-11-30']);assert.ok(absentMonth.rows.every(r=>r.status==='absent'));
+ await openMonth('Upload late-coming report');
+ const monthlyLate='Log Date,Emp ID,Emp Name,Shift Start,LogTime\n01-Nov-26,1,Sample Staff A,7:56:00 AM,8:01:23 AM\n30-Nov-26,2,Sample Staff B,9:00:00 AM,9:03:11 AM';
+ const monthlyEarly='Log Date,Emp ID,Emp Name,Shift End,LogTime\n01-Nov-26,1,Sample Staff A,6:00:00 PM,5:57:31 PM\n30-Nov-26,2,Sample Staff B,6:00:00 PM,5:50:15 PM';
+ await page.evaluate(text=>{const file=new File([text],'slow-month.csv');file.text=()=>new Promise(resolve=>{window.__releaseMonthlySlow=()=>resolve(text);});window.__monthlySlow=document.querySelector('#monthly-late-file').onchange({target:{files:[file]}});},monthlyLate.replace('8:01:23 AM','8:10:00 AM'));
+ assert.equal(await page.locator('#monthly-early-file').isDisabled(),true);
+ await page.evaluate(text=>document.querySelector('#monthly-early-file').onchange({target:{files:[new File([text],'early.csv')],value:'early.csv'}}),monthlyEarly);
+ assert.ok((await page.locator('#toast').innerText()).includes('Wait for the current report preview'));
+ await monthlyUpload('late',monthlyLate);await page.getByText('2 report rows loaded across all departments and dates.',{exact:false}).waitFor();
+ await page.evaluate(async()=>{window.__releaseMonthlySlow();await window.__monthlySlow;});
+ assert.equal(await page.locator('[data-monthly-row="0"][data-monthly-key="in_time"]').inputValue(),'08:01:23');
+ await page.locator('[data-monthly-pick="1"]').uncheck();
+ await monthlyUpload('early',monthlyEarly);await page.getByText('2 report rows loaded across all departments and dates.',{exact:false}).waitFor();
+ assert.equal(await page.locator('[data-monthly-pick="1"]').isChecked(),false);
+ await page.getByRole('button',{name:'Select all matching rows',exact:true}).click();
+ assert.equal(await page.locator('[data-monthly-row="0"][data-monthly-key="in_time"]').inputValue(),'08:01:23');assert.equal(await page.locator('[data-monthly-row="0"][data-monthly-key="out_time"]').inputValue(),'17:57:31');assert.equal(await page.locator('[data-monthly-row="1"][data-monthly-key="early_minutes"]').inputValue(),'9');
+ await page.getByLabel('Reviewed status for selected matching rows',{exact:true}).selectOption('present');await page.getByRole('button',{name:'Apply reviewed status',exact:true}).click();
+ await page.getByLabel('Monthly attendance review reason',{exact:true}).fill('Reviewed all monthly arrival and departure evidence');
+ bulkSaveError=true;await page.getByRole('button',{name:'Save',exact:true}).click();await page.locator('#form-error').getByText('Payroll month is locked; use a reviewed adjustment',{exact:true}).waitFor();
+ bulkSaveError=false;await page.getByRole('button',{name:'Save',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('#modal').open);
+ const monthRetries=calls.filter(c=>c.action==='monthly_attendance'&&c.payload.mode==='save').slice(-2);assert.equal(monthRetries[0].payload.request_id,monthRetries[1].payload.request_id);assert.equal(monthRetries[1].payload.rows.length,2);assert.equal(monthRetries[1].payload.rows[0].late_minutes,5);assert.equal(monthRetries[1].payload.rows[0].early_minutes,2);
+ // Page and search controls never drop selected rows outside the visible page.
+ staff.push({...staff[0],id:'s3',biometric_id:'3',name:'Monthly Third'}, {...staff[1],id:'s4',biometric_id:'4',name:'Monthly Fourth'});
+ await openMonth('Upload early-going report');
+ const month120='Date,Emp ID,Emp Name,Department,Shift\n'+staff.slice(0,4).flatMap(s=>Array.from({length:30},(_,i)=>`2026-11-${String(i+1).padStart(2,'0')},${s.biometric_id},${s.name},${s.department},General-1`)).join('\n');
+ await monthlyUpload('absence',month120);await page.getByText('120 report rows loaded across all departments and dates.',{exact:false}).waitFor();assert.equal(await page.locator('[data-monthly-pick]').count(),100);
+ await page.getByRole('button',{name:'Next page',exact:true}).click();assert.equal(await page.locator('[data-monthly-pick]').count(),20);
+ await page.getByLabel('Reviewed status for selected matching rows',{exact:true}).selectOption('absent');await page.getByRole('button',{name:'Apply reviewed status',exact:true}).click();
+ await page.getByLabel('Search monthly preview - employee, department or date',{exact:true}).fill('Human Resources');await page.getByRole('button',{name:'Deselect all matching rows',exact:true}).click();assert.ok((await page.locator('#monthly-count').innerText()).includes('60 selected'));
+ await page.getByLabel('Monthly attendance review reason',{exact:true}).fill('Reviewed selected Engineering staff for the whole month');await page.getByRole('button',{name:'Save',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('#modal').open);
+ const monthSelected=calls.filter(c=>c.action==='monthly_attendance'&&c.payload.mode==='save').at(-1).payload;assert.equal(monthSelected.rows.length,60);assert.ok(monthSelected.rows.every(r=>['s1','s3'].includes(r.staff_id)));staff.splice(2,2);
+ await openMonth('Upload absence report');await monthlyUpload('absence',monthlyAbsence.replaceAll('Nov-26','Oct-26'));await page.getByText('Every report date must be in the selected month; no rows were imported',{exact:true}).waitFor();assert.equal(await page.locator('[data-monthly-pick]').count(),0);await page.getByRole('button',{name:'Cancel',exact:true}).click();
  await page.locator('nav').getByRole('button',{name:'Staff master',exact:true}).click();
  await page.getByRole('button',{name:'+ Add staff',exact:true}).click();
  await page.getByLabel('Staff code',{exact:true}).fill('QA003');await page.getByLabel('Full name').fill('UI Test Staff');
@@ -215,5 +266,5 @@ try{
  role='admin';paused=false;platformOwner=true;await page.setViewportSize({width:390,height:844});await page.reload();await page.getByRole('button',{name:'Platform Admin',exact:true}).click();
  assert.equal(await page.locator('[data-platform-module]:checked').count(),0);
  assert.deepEqual(errors,[]);
- console.log('PASS: absence, late-coming and early-going upload/save/retry, combined arrival/departure edits, missing-punch review blocks writes until a status decision, eight module screens, mocked backend API requests, staff form, letter merge, mobile layout, staff permissions and paused-company rendering.');
+ console.log('PASS: full-month/all-department uploads, combined reports, pagination/selection, atomic API retry, daily absence/late/early review, combined arrival/departure edits, missing-punch review blocks writes until a status decision, eight module screens, mocked backend API requests, staff form, letter merge, mobile layout, staff permissions and paused-company rendering.');
 }finally{await browser.close();}

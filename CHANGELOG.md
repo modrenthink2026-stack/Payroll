@@ -2,6 +2,9 @@
 
 ## 2026-10-25
 
+- Upload a whole month across all departments, combine report types in one paged preview and save all selected employee/date rows atomically; support up to 15,500 rows with explicit exception review.
+- Add the monthly attendance RPC as a compatible migration that reuses existing attendance, permission, stale-data and payroll-lock checks.
+
 - Upload biometric absence, late-coming and early-going CSV reports into department/date attendance review, with exact biometric ID matching, date-range headings and times with seconds.
 - Require an explicit reviewed status for missing-punch, afternoon-arrival and morning-departure cases; keep raw punches separate and preserve combined arrival/departure edits.
 - Preserve the existing attendance save, company permissions, stale-data checks, payroll locks and monthly late-review rules; no database migration is required.

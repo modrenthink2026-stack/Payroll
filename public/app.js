@@ -1,3 +1,4 @@
+import {prepareMonthlyReport,stageMonthlyReport} from './monthly-attendance.js';
 import {earlyColumns,earlyTemplateCSV,prepareEarlyReport,earlyDrafts,lateColumns,lateTemplateCSV,prepareLateReport,lateDrafts} from './late-csv.js';
 import {absenceColumns,absenceTemplateCSV,prepareAbsenceReport,absenceDrafts} from './absence-csv.js';
 import {biometricColumns,biometricExampleRows,biometricTemplateCSV,biometricSampleCSV} from './biometric-csv.js';
@@ -14,7 +15,7 @@ import {lateSummaryText,minutesClock} from './lateness.js';
 import {leaveGroups,leaveOffices,leaveGroup,leaveOffice,officeLabel} from './leave-routing.js';
 import {rosterFields,prepareRoster} from './roster.js';
 import {staffTemplate,validateStaffImport,shiftMinutes} from './staff-master.js';
-import {rpc,bulkAttendance,saveBulkLeaveBalances,assignUsernameRole,systemUsers,platformAdmin,saveDepartmentSalaries,assignShifts,accountAction,signIn,signUp,signOut,currentUser,changePassword,requestPasswordReset,acceptRecoveryLink,recoveryActive} from './api.js';
+import {rpc,monthlyAttendance,bulkAttendance,saveBulkLeaveBalances,assignUsernameRole,systemUsers,platformAdmin,saveDepartmentSalaries,assignShifts,accountAction,signIn,signUp,signOut,currentUser,changePassword,requestPasswordReset,acceptRecoveryLink,recoveryActive} from './api.js';
 import {isRecoveryCallback} from './recovery.js';
 import {money,esc,parseCSV,csvText,weightedScore,letterTypes,letterBody} from './domain.js';
 const app=document.querySelector('#app'),modal=document.querySelector('#modal');
@@ -446,7 +447,59 @@ async function action(a,id){
  if(a==='early-template'){download('biometric-early-template.csv',earlyTemplateCSV());return;}
  if(a==='late-template'){download('biometric-late-template.csv',lateTemplateCSV());return;}
  if(a==='absence-template'){download('biometric-absence-template.csv',absenceTemplateCSV());return;}
- if(a==='attendance-bulk'||a==='attendance-absence'||a==='attendance-late'||a==='attendance-early'){
+ if(['attendance-absence','attendance-late','attendance-early'].includes(a)){
+  if(!hr())throw Error('HR access required');
+  const companyId=company.id;let rows=[],editor=null,generation=0,pending=false,pendingKind='',pageIndex=0,lastBody='',requestId=crypto.randomUUID();
+  const active=()=>modal.open&&$('#editor')===editor&&company?.id===companyId;
+  const statusOptions=[['','Needs review - choose status'],['present','Present'],['half_day','Half day'],['absent','Absent / unpaid'],['holiday','Approved holiday']];
+  const matching=()=>rows.map((r,i)=>({r,i})).filter(({r})=>attendanceMatches({...r.staff,name:r.staff.name+' '+r.staff.department+' '+r.work_date},$('#f-monthly_search').value));
+  const paint=()=>{
+   const matches=matching(),pages=Math.max(1,Math.ceil(matches.length/100));pageIndex=Math.min(pageIndex,pages-1);
+   const selected=rows.filter(r=>r.selected),needs=selected.filter(r=>!r.status).length;
+   $('#monthly-count').textContent=rows.length+' employee/date rows across '+new Set(rows.map(r=>r.staff.department)).size+' departments and '+new Set(rows.map(r=>r.work_date)).size+' dates. '+selected.length+' selected, '+needs+' need a status decision. '+matches.length+' match search. Page '+(pageIndex+1)+' of '+pages+'. Saving includes selected rows on every page.';
+   $('#monthly-prev').disabled=pageIndex===0;$('#monthly-next').disabled=pageIndex===pages-1;
+   $('#monthly-rows').innerHTML=table(['Select','Date','Employee / department','Review checks','Status','In time','Out time','Raw late min','Early min','Next-day out','Row note'],matches.slice(pageIndex*100,pageIndex*100+100).map(({r,i})=>{
+    const attr=k=>`data-monthly-row="${i}" data-monthly-key="${k}" ${r.selected?'':'disabled'}`;
+    return [`<input type="checkbox" data-monthly-pick="${i}" ${r.selected?'checked':''} aria-label="Select ${esc(r.staff.name+' '+r.work_date)}">`,esc(r.work_date),`<strong>${esc(r.staff.name)}</strong><br>${esc(r.staff.code)} / ${esc(r.staff.department)}`,esc(attendanceIssues(r,r.staff).join('; ')||'No time exceptions flagged'),`<select ${attr('status')} aria-label="Reviewed status for ${esc(r.staff.name+' '+r.work_date)}">${statusOptions.map(([v,l])=>`<option value="${v}" ${r.status===v?'selected':''}>${l}</option>`).join('')}</select>`,...['in_time','out_time'].map(k=>`<input type="time" step="1" ${attr(k)} value="${esc(r[k])}" aria-label="${esc(k+' '+r.staff.name+' '+r.work_date)}">`),...['late_minutes','early_minutes'].map(k=>`<input type="number" min="0" max="1440" step="1" ${attr(k)} value="${esc(r[k])}" aria-label="${esc(k+' '+r.staff.name+' '+r.work_date)}">`),`<input type="checkbox" ${attr('out_next_day')} ${r.out_next_day?'checked':''} aria-label="Next-day out ${esc(r.staff.name+' '+r.work_date)}">`,`<input type="text" maxlength="500" ${attr('note')} value="${esc(r.note)}" aria-label="Note ${esc(r.staff.name+' '+r.work_date)}">`];
+   }));
+  };
+  const uploadSection=(kind,label,columns,action)=>`<div class="field full"><h3>${label}</h3><p>${columns.join(', ')}</p><button type="button" class="secondary" data-action="${action}">Download ${kind} template</button><label for="monthly-${kind}-file">Monthly ${label.toLowerCase()} CSV</label><input id="monthly-${kind}-file" type="file" accept=".csv,text/csv"></div>`;
+  form('Monthly attendance upload - all departments',field('import_month','Report month',month,'month','required')+`<p class="field full notice">Upload one whole-month file per report type, including every department. Maximum 15,500 rows / 2 MB per file. All dates must belong to the chosen month. Reports can be combined in this preview. No dates or departments are silently skipped. Save writes every selected row together or none. Missing punches and afternoon/morning exceptions require an HR status decision; no attendance entitlement is inferred.</p>`+uploadSection('absence','Absence report',absenceColumns,'absence-template')+uploadSection('late','Late-coming report',lateColumns,'late-template')+uploadSection('early','Early-going report',earlyColumns,'early-template')+`<p class="field full" id="monthly-preview" role="status"></p>`+field('monthly_search','Search monthly preview - employee, department or date','','search')+select('monthly_status','Reviewed status for selected matching rows',statusOptions)+`<div class="field full actions"><button type="button" id="monthly-apply-status" class="secondary">Apply reviewed status</button><button type="button" id="monthly-select" class="secondary">Select all matching rows</button><button type="button" id="monthly-deselect" class="secondary">Deselect all matching rows</button><button type="button" id="monthly-clear" class="secondary">Clear preview</button></div>`+field('reason','Monthly attendance review reason','','text','required minlength="3" maxlength="500"')+`<div class="field full"><p id="monthly-count" role="status"></p><div class="actions"><button type="button" id="monthly-prev" class="secondary">Previous page</button><button type="button" id="monthly-next" class="secondary">Next page</button></div><div id="monthly-rows"></div></div>`,async p=>{
+   if(pending)throw Error('Wait for the upload preview to finish');
+   const selected=rows.filter(r=>r.selected);if(!selected.length)throw Error('Upload a report and select rows');
+   if(selected.some(r=>!r.status))throw Error('Choose a reviewed status for every selected row, including other pages');
+   for(const r of selected){for(const k of ['late_minutes','early_minutes'])if(!/^\d+$/.test(String(r[k]))||Number(r[k])>1440)throw Error('Late and early minutes must be whole numbers from 0 to 1440');if(r.note.length>500)throw Error('Row notes must be at most 500 characters');}
+   const body={mode:'save',company_id:companyId,month:p.import_month+'-01',reason:p.reason,rows:selected.map(({staff,selected,...r})=>r)};
+   const fingerprint=JSON.stringify(body);if(lastBody&&lastBody!==fingerprint)requestId=crypto.randomUUID();lastBody=fingerprint;
+   const result=await monthlyAttendance({...body,request_id:requestId});modal.close();await load();toast(result.updated+' monthly attendance rows saved');
+  });editor=$('#editor');modal.classList.add('salary-editor');
+  const clear=()=>{generation++;pending=false;pendingKind='';rows=[];pageIndex=0;for(const kind of ['absence','late','early']){$('#monthly-'+kind+'-file').value='';$('#monthly-'+kind+'-file').disabled=false;}$('#monthly-preview').textContent='';paint();};
+  $('#f-import_month').onchange=clear;$('#monthly-clear').onclick=clear;
+  $('#f-monthly_search').oninput=()=>{pageIndex=0;paint();};
+  $('#monthly-prev').onclick=()=>{pageIndex--;paint();};$('#monthly-next').onclick=()=>{pageIndex++;paint();};
+  $('#monthly-select').onclick=()=>{matching().forEach(({r})=>r.selected=true);paint();};$('#monthly-deselect').onclick=()=>{matching().forEach(({r})=>r.selected=false);paint();};
+  $('#monthly-apply-status').onclick=()=>{const value=$('#f-monthly_status').value;if(!value){toast('Choose a reviewed status first');return;}matching().forEach(({r})=>{if(r.selected)r.status=value;});paint();};
+  $('#monthly-rows').oninput=e=>{if(e.target.dataset.monthlyRow===undefined)return;const r=rows[Number(e.target.dataset.monthlyRow)];r[e.target.dataset.monthlyKey]=e.target.type==='checkbox'?e.target.checked:e.target.value;};
+  $('#monthly-rows').onchange=e=>{if(e.target.dataset.monthlyPick!==undefined){rows[Number(e.target.dataset.monthlyPick)].selected=e.target.checked;}paint();};
+  for(const kind of ['absence','late','early'])$('#monthly-'+kind+'-file').onchange=async e=>{
+   const file=e.target.files?.[0];if(!file)return;if(pending&&pendingKind!==kind){e.target.value='';toast('Wait for the current report preview before uploading another report type');return;}const revision=++generation,reportMonth=$('#f-import_month').value;
+   const current=()=>active()&&revision===generation&&$('#f-import_month').value===reportMonth;
+   pending=true;pendingKind=kind;for(const key of ['absence','late','early'])$('#monthly-'+key+'-file').disabled=key!==kind;$('#monthly-preview').textContent='Loading all report rows...';
+   try{
+    if(file.size>2_000_000)throw Error('File exceeds 2 MB');
+    const text=await file.text();if(!current())return;
+    const state=await rpc('state',{company_id:companyId});if(!current())return;
+    const report=prepareMonthlyReport(kind,text,state.staff,reportMonth);
+    const snapshots=await monthlyAttendance({mode:'load',company_id:companyId,month:reportMonth+'-01',rows:report.map(({staff_id,work_date})=>({staff_id,work_date}))});if(!current())return;
+    const latestStaff=[...new Map(snapshots.map(r=>[r.staff_id,r.staff])).values()];
+    const fresh=prepareMonthlyReport(kind,text,latestStaff,reportMonth);
+    rows=stageMonthlyReport(kind,fresh,snapshots,rows);pageIndex=0;paint();
+    $('#monthly-preview').textContent=report.length+' report rows loaded across all departments and dates. Review the combined preview before saving.';
+   }catch(err){if(current())$('#monthly-preview').textContent=err.message;}finally{if(revision===generation){pending=false;pendingKind='';if(active())for(const key of ['absence','late','early'])$('#monthly-'+key+'-file').disabled=false;}}
+  };
+  paint();return;
+ }
+ if(a==='attendance-bulk'){
   if(!hr())throw Error('HR access required');let rows=[],loadedFilter='',lastBody='',requestId=crypto.randomUUID(),editor=null,importGeneration=0,importPending=false;const editorCompanyId=company.id;const editorActive=()=>editor&&$('#editor')===editor&&modal.open&&company?.id===editorCompanyId;const filter=()=>JSON.stringify([$('#f-attendance_department').value,$('#f-attendance_date').value]);const picks=()=>[...modal.querySelectorAll('[data-attendance-pick]:checked')];
   const visiblePicks=()=>[...modal.querySelectorAll('[data-attendance-pick]')].filter(el=>!el.closest('tr').hidden);
   const sync=()=>{rows.forEach((r,i)=>{const cell=modal.querySelector(`[data-attendance-issues="${i}"]`);if(cell){const current={...r,...Object.fromEntries([...modal.querySelectorAll(`[data-attendance-row="${i}"]`)].map(x=>[x.dataset.attendanceKey,x.type==='checkbox'?x.checked:x.value]))};cell.textContent=attendanceIssues(current,r.staff).join('; ')||'No time exceptions flagged';}});const visible=visiblePicks(),selected=picks(),hidden=selected.filter(el=>el.closest('tr').hidden).length;$('#attendance-bulk-count').textContent=visible.length+' of '+rows.length+' staff match · '+selected.length+' selected'+(hidden?' · '+hidden+' selected hidden by search (included when saving)':'');$('#attendance-bulk-all').checked=visible.length>0&&visible.every(el=>el.checked);$('#attendance-bulk-all').indeterminate=visible.some(el=>el.checked)&&!visible.every(el=>el.checked);};

@@ -26,7 +26,7 @@ test('Supplied early-going report parses metadata, blanks and AM/PM seconds with
  assert.deepEqual(rows.map(r=>r.early_minutes),[2,82,403,371,368,387,171,83,0,1]);
  assert.deepEqual(staff.map(s=>rows.filter(r=>r.staff_id===s.id).reduce((n,r)=>n+r.early_minutes,0)),[84,403,1297,83,1]);
  assert.equal(rows[1].out_time,'12:57:36');assert.equal(rows[2].out_time,'07:36:40');
- assert.throws(()=>prepareEarlyReport(earlyTemplateCSV(),staff),/1 to 1,000/);
+ assert.throws(()=>prepareEarlyReport(earlyTemplateCSV(),staff),/1 to 15,500/);
  for(const date of ['12-09-2026','2026-09-12'])assert.equal(prepareEarlyReport(single.replace('12-Sep-26',date),staff)[0].work_date,'2026-09-12');
 });
 test('Configured daily early grace is subtracted once, with a floor of zero',()=>{
@@ -39,7 +39,7 @@ test('Report rejects unknown identities, mismatched shifts, bad ranges, duplicat
  for(const change of [{status:'separated'},{joining_date:'2026-10-01'},{leaving_date:'2026-09-01'},{shift_start:'22:00:00'}])assert.throws(()=>prepareEarlyReport(single,[{...staff[0],...change}]));
  assert.throws(()=>prepareEarlyReport(single,[staff[0],{...staff[0],id:'other'}]),/ambiguous/);
  assert.throws(()=>prepareEarlyReport('x'.repeat(2_000_001),staff),/2 MB/);
- assert.throws(()=>prepareEarlyReport(single.split('\n')[0]+'\n'+Array(1001).fill(single.split('\n')[1]).join('\n'),staff),/1,000/);
+ assert.throws(()=>prepareEarlyReport(single.split('\n')[0]+'\n'+Array(15501).fill(single.split('\n')[1]).join('\n'),staff),/15,500/);
 });
 test('Early staging preserves arrival seconds, raw lateness and snapshot; invalid attendance cannot be overwritten',()=>{
  const rows=prepareEarlyReport(csv,staff),draft=earlyDrafts(rows,[current],'Teaching','2026-09-12').get('2');

@@ -36,7 +36,7 @@ function prepareTimeReport(text,staff,early){
  }
  const headers=records.shift();
  if(!headers||headers.length!==columns.length||headers.some((h,i)=>h!==columns[i]))throw Error('Use headings: '+columns.join(', '));
- if(!records.length||records.length>1000)throw Error('Upload 1 to 1,000 '+(early?'early-going':'late-coming')+' rows');
+ if(!records.length||records.length>15500)throw Error('Upload 1 to 15,500 '+(early?'early-going':'late-coming')+' rows');
  const seen=new Set();
  return records.map((r,i)=>{
   const fail=message=>{throw Error(`${label} report row ${i+1}: ${message}`);};

@@ -60,6 +60,7 @@ export async function rpc(action,payload={}){
 export async function saveBulkLeaveBalances(payload){await refresh();return request('/rest/v1/rpc/payroll_bulk_leave_balances',{payload},session.access_token);}
 
 export async function bulkAttendance(payload){await refresh();return request('/rest/v1/rpc/payroll_bulk_attendance',{payload},session.access_token);}
+export async function monthlyAttendance(payload){await refresh();return request('/rest/v1/rpc/payroll_monthly_attendance',{payload},session.access_token);}
 export async function accountAction(payload){await refresh();return request("/functions/v1/payroll-accounts",payload,session.access_token);}
 
 export async function assignShifts(payload){await refresh();return request('/rest/v1/rpc/payroll_assign_shifts',{payload},session.access_token);}
