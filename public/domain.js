@@ -1,6 +1,6 @@
 export const money = n => new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:2}).format(Number(n)||0);
 export const esc = v => String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-export function parseCSV(text){
+export function parseCSVRows(text){
   if(text.length>2_000_000) throw Error('File exceeds 2 MB');
   const rows=[];let row=[],v='',quoted=false;
   for(let i=0;i<text.length;i++){
@@ -13,6 +13,10 @@ export function parseCSV(text){
   if(quoted)throw Error('Unclosed quoted CSV field');
   row.push(v);if(row.some(x=>x.trim()))rows.push(row);
   if(!rows.length)throw Error('CSV is empty');
+  return rows;
+}
+export function parseCSV(text){
+  const rows=parseCSVRows(text);
   const heads=rows.shift().map(x=>x.trim().replace(/^\uFEFF/,''));
   if(new Set(heads).size!==heads.length)throw Error('Duplicate CSV header');
   return rows.map((r,i)=>{if(r.length!==heads.length)throw Error(`CSV row ${i+2} has the wrong number of columns`);return Object.fromEntries(heads.map((h,j)=>[h,r[j].trim()]));});

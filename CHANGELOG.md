@@ -2,6 +2,11 @@
 
 ## 2026-10-25
 
+- Upload biometric absence, late-coming and early-going CSV reports into department/date attendance review, with exact biometric ID matching, date-range headings and times with seconds.
+- Require an explicit reviewed status for missing-punch, afternoon-arrival and morning-departure cases; keep raw punches separate and preserve combined arrival/departure edits.
+- Preserve the existing attendance save, company permissions, stale-data checks, payroll locks and monthly late-review rules; no database migration is required.
+- Refresh staff settings before report preparation and discard superseded uploads or responses from a closed editor.
+- Verify the report imports with 115 unit tests, 21 isolated SQL suites, Chrome browser checks against a mocked backend and the production build.
 - Refresh dashboard cards, pending-work summaries, navigation, login and table styling.
 - Add a labelled mobile module selector using the same company and role permissions as desktop navigation.
 - Keep staff names and column headings visible when scrolling long staff tables, with larger touch controls and responsive payroll-month actions.
