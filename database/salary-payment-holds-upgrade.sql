@@ -20,6 +20,15 @@ declare cid uuid=nullif(payload->>'company_id','')::uuid;uid uuid=auth.uid();sid
  rid uuid=nullif(payload->>'id','')::uuid;r text;m date;out jsonb;req uuid=nullif(payload->>'request_id','')::uuid;
  h payroll_private.salary_payment_holds;run public.payroll_runs;ln public.payroll_lines;previous_revision integer;changed integer;
 begin
+ if action='bootstrap' then
+  out=payroll_private.dispatch(action,payload);
+  if to_regclass('public.payroll_platform_admins') is not null then
+   select out||jsonb_build_object('companies',coalesce(jsonb_agg(j||jsonb_build_object('platform_status',c.platform_status,'enabled_modules',c.enabled_modules)),'[]'::jsonb))
+    into out from jsonb_array_elements(out->'companies') j join public.payroll_companies c on c.id=(j->>'id')::uuid;
+   return out;
+  end if;
+  return out;
+ end if;
  if action='state' then
   out=payroll_private.dispatch(action,payload);r=payroll_private.role(cid);
   if r in ('admin','accountant','hr') then
@@ -38,6 +47,7 @@ begin
  end if;
  if action='salary_payment_state' then
   select * into run from public.payroll_runs where id=rid and company_id=cid;if not found then raise exception 'Payroll not found';end if;
+  if run.status<>'released' then raise exception 'Release payroll before preparing bank payments';end if;
   return jsonb_build_object('held_count',(select count(*) from public.payroll_lines l join payroll_private.salary_payment_holds ph on ph.company_id=l.company_id and ph.staff_id=l.staff_id and ph.month=run.month and ph.status='held' where l.run_id=rid),
    'paid_count',(select count(*) from public.payroll_lines where run_id=rid and payment_reference is not null),
    'rows',coalesce((select jsonb_agg(jsonb_build_object('staff_id',l.staff_id,'name',s.name,'bank_account',p.bank_account,'ifsc',p.ifsc,'net',l.net) order by s.code,l.staff_id) from public.payroll_lines l join public.payroll_staff s on s.id=l.staff_id left join public.payroll_profiles p on p.staff_id=l.staff_id where l.run_id=rid and l.payment_reference is null and not exists(select 1 from payroll_private.salary_payment_holds ph where ph.company_id=cid and ph.staff_id=l.staff_id and ph.month=run.month and ph.status='held')),'[]'::jsonb));
@@ -77,4 +87,8 @@ begin
 end$$;
 revoke all on function payroll_private.payment_dispatch(text,jsonb) from public,anon;
 grant execute on function payroll_private.payment_dispatch(text,jsonb) to authenticated;
-create or replace function public.payroll_api(action text,payload jsonb default '{}') returns jsonb language sql security invoker set search_path='' as $$select payroll_private.payment_dispatch(action,payload)$$;
+create or replace function public.payroll_api(action text,payload jsonb default '{}') returns jsonb language plpgsql security invoker set search_path='' as $$
+begin
+ if to_regprocedure('payroll_private.platform_action_guard(text,jsonb)') is not null then perform payroll_private.platform_action_guard(action,payload);end if;
+ return payroll_private.payment_dispatch(action,payload);
+end$$;

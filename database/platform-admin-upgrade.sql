@@ -115,7 +115,7 @@ language sql immutable set search_path='' as $$
   when action in ('staff_save','staff_import','staff_roster_import','staff_delete','staff_login_prepare','staff_login_link','initial_salary','increment_save','increment_decide','service_change','separate','staff_activate') then 'staff'
   when action in ('attendance_save','attendance_report','punch_import','late_month','late_review','late_reopen') then 'attendance'
   when action like 'leave_%' then 'leave'
-  when action like 'payroll_%' or action in ('tax_inputs','deposit_refund','salary_payment_state') then 'payroll'
+  when action like 'payroll_%' or action in ('tax_inputs','deposit_refund','salary_payment_state','salary_hold_set','salary_hold_history') then 'payroll'
   when action like 'document_%' then 'letters'
   when action like 'assessment_%' then 'assessments'
   when action in ('reports','deposit_balances','deposit_transactions') then 'reports'
@@ -127,6 +127,8 @@ language plpgsql security definer set search_path='' as $$
 declare cid uuid=nullif(payload->>'company_id','')::uuid; module text;
 begin
  if action in ('bootstrap','state','staff_password_ready') or payroll_private.platform_admin() then return true; end if;
+ -- Serialize module checks with platform pause/update and the business write.
+ perform 1 from public.payroll_companies where id=cid for update;
  module=payroll_private.platform_action_module(action);
  if module is not null and not payroll_private.module_enabled(cid,module) then raise exception 'This Payroll module is paused or unavailable for the company'; end if;
  return true;
@@ -138,7 +140,9 @@ create or replace function payroll_private.platform_direct_guard(payload jsonb,m
 language plpgsql security definer set search_path='' as $$
 declare cid uuid=nullif(payload->>'company_id','')::uuid;
 begin
- if payroll_private.platform_admin() or payroll_private.module_enabled(cid,module) then return true; end if;
+ if payroll_private.platform_admin() then return true;end if;
+ perform 1 from public.payroll_companies where id=cid for update;
+ if payroll_private.module_enabled(cid,module) then return true; end if;
  raise exception 'This Payroll module is paused or unavailable for the company';
 end$$;
 revoke all on function payroll_private.platform_direct_guard(jsonb,text) from public,anon;
@@ -153,9 +157,12 @@ create or replace function public.payroll_bulk_attendance(payload jsonb) returns
 -- applied after system-users-upgrade.sql in an installed database.
 create or replace function public.payroll_system_users(payload jsonb) returns jsonb language sql security invoker set search_path='' as $$select payroll_private.system_users_api(payload) from payroll_private.platform_direct_guard(payload,'settings')$$;
 
--- The existing dispatcher remains the single business-logic gateway.
-create or replace function public.payroll_api(action text,payload jsonb default '{}') returns jsonb language sql security invoker set search_path='' as $$
- select payroll_private.dispatch(action,payload) from payroll_private.platform_action_guard(action,payload)
+-- Preserve payment holds and reconciliation when adding platform controls.
+create or replace function public.payroll_api(action text,payload jsonb default '{}') returns jsonb language plpgsql security invoker set search_path='' as $$
+begin
+ perform payroll_private.platform_action_guard(action,payload);
+ return payroll_private.payment_dispatch(action,payload);
+end
 $$;
 grant execute on function public.payroll_api(text,jsonb) to authenticated;
 notify pgrst,'reload schema';

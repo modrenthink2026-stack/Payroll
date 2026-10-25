@@ -1,0 +1,32 @@
+begin;
+do $$
+declare uid uuid;c uuid=gen_random_uuid();s uuid=gen_random_uuid();j jsonb;blocked boolean;
+begin
+ select user_id into uid from public.payroll_members where role='admin' limit 1;
+ insert into public.payroll_companies(id,name) values(c,'Platform payment QA');
+ insert into public.payroll_members values(c,uid,'admin');
+ insert into public.payroll_staff(id,company_id,code,name,email,joining_date) values(s,c,'PLATFORM-HOLD','Synthetic held staff','platform-hold@example.invalid','2026-01-01');
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',uid,'role','authenticated')::text,true);
+ execute 'set local role authenticated';
+ j=public.payroll_api('bootstrap','{}');
+ if not exists(select 1 from jsonb_array_elements(j->'companies') company where company->>'id'=c::text and company->>'platform_status'='active' and company->'enabled_modules'->>'payroll'='true') then raise exception 'Bootstrap omitted platform metadata';end if;
+ blocked=false;begin perform public.payroll_platform_admin('{"action":"snapshot"}');exception when others then if sqlerrm not like '%Platform administrator access required%' then raise;end if;blocked=true;end;
+ if not blocked then raise exception 'Company administrator gained platform access';end if;
+ j=public.payroll_api('salary_hold_set',jsonb_build_object('company_id',c,'staff_id',s,'month','2026-10-01','status','held','reason','Synthetic integration review','expected_revision',0,'request_id',gen_random_uuid()));
+ if j->>'status'<>'held' then raise exception 'Payment dispatcher bypassed';end if;
+ execute 'reset role';
+ update public.payroll_companies set enabled_modules=enabled_modules||'{"payroll":false}' where id=c;
+ execute 'set local role authenticated';
+ blocked=false;begin perform public.payroll_api('salary_hold_set',jsonb_build_object('company_id',c,'staff_id',s,'month','2026-10-01','status','released','reason','Must remain on hold','expected_revision',1,'request_id',gen_random_uuid()));exception when others then if sqlerrm not like '%paused or unavailable%' then raise;end if;blocked=true;end;
+ if not blocked then raise exception 'Disabled payroll module accepted a hold write';end if;
+ execute 'reset role';
+ if (select status from payroll_private.salary_payment_holds where company_id=c and staff_id=s)<>'held' then raise exception 'Disabled write changed hold';end if;
+ update public.payroll_companies set platform_status='paused',enabled_modules=enabled_modules||'{"payroll":true}' where id=c;
+ execute 'set local role authenticated';
+ blocked=false;begin perform public.payroll_api('salary_hold_history',jsonb_build_object('company_id',c,'month','2026-10-01'));exception when others then if sqlerrm not like '%paused or unavailable%' then raise;end if;blocked=true;end;
+ if not blocked then raise exception 'Paused company bypassed payment guard';end if;
+ j=public.payroll_api('state',jsonb_build_object('company_id',c));
+ if jsonb_array_length(j->'salary_holds')<>1 then raise exception 'Pause lost readable hold records';end if;
+ execute 'reset role';
+end$$;
+rollback;
