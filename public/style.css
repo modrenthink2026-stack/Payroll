@@ -163,3 +163,14 @@ dialog.salary-editor td input[type=number]{width:120px}dialog.salary-editor td:f
 
 /* Dense biometric register keeps the company report inside a wide, scrollable dialog. */
 dialog.raw-register-editor{width:min(1520px,96vw);max-width:1520px}dialog.raw-register-editor table{font-size:11px;min-width:1140px}dialog.raw-register-editor th{font-size:9px;letter-spacing:.2px}dialog.raw-register-editor td,dialog.raw-register-editor th{padding:10px 8px}dialog.raw-register-editor .table-wrap{max-height:55vh}dialog.raw-register-editor th{position:sticky;top:0;z-index:1}dialog.raw-register-editor td:nth-child(3),dialog.raw-register-editor td:nth-child(10),dialog.raw-register-editor td:last-child{white-space:normal;min-width:110px;max-width:170px;overflow-wrap:anywhere}
+
+/* Attendance tasks are grouped into four accessible workflow sections. */
+.attendance-tabs{display:flex;gap:8px;padding:6px;background:var(--surface);border:1px solid var(--line);border-radius:12px;margin:0 0 22px;overflow-x:auto}
+.attendance-tabs [role=tab]{flex:1;white-space:nowrap;color:var(--muted);background:transparent;border:1px solid transparent;min-height:44px;padding:11px 17px;border-radius:8px}
+.attendance-tabs [aria-selected=true]{color:var(--accent-ink);background:var(--accent-soft);border-color:var(--line);font-weight:700}
+.attendance-section-heading{display:flex;gap:13px;align-items:flex-start;margin-bottom:20px}.attendance-section-heading h2{margin:1px 0 6px}.attendance-section-heading p{margin:0;font-size:13px}
+.attendance-step{display:grid;place-items:center;flex:none;width:34px;height:34px;border-radius:10px;background:var(--accent-soft);color:var(--accent-ink);font-weight:700}
+.attendance-format{padding:15px 18px;background:var(--surface-alt);border:1px solid var(--line);border-radius:9px;font-size:13px;font-weight:600;overflow-wrap:anywhere}.attendance-format span{margin:0 10px;color:var(--muted)}
+.attendance-other-formats{margin-top:25px;border-top:1px solid var(--line);padding-top:18px}.attendance-other-formats summary,.attendance-raw-punches summary{cursor:pointer;font-weight:650;color:var(--ink)}.attendance-advanced{margin-top:18px;padding:15px;background:var(--surface-alt);border-radius:9px}.attendance-advanced summary{font-size:12px}
+.attendance-policy-summary{background:var(--accent-soft);border-radius:10px;padding:17px 20px;margin-bottom:20px}.attendance-policy-summary p{font-size:13px;max-width:900px;margin:6px 0 0}.attendance-confirm-counts{margin-bottom:20px}
+@media(max-width:680px){.attendance-tabs{gap:4px;margin-bottom:16px}.attendance-tabs [role=tab]{font-size:12px;padding:9px 12px;flex:none}.attendance-section{padding:18px}.attendance-format{font-size:12px;line-height:1.9}.attendance-format span{margin:0 5px}.attendance-confirm-counts{grid-template-columns:1fr}}
