@@ -71,3 +71,6 @@ export async function assignUsernameRole(payload){await refresh();return request
 
 export async function systemUsers(payload){await refresh();return request('/rest/v1/rpc/payroll_system_users',{payload},session.access_token);}
 export async function platformAdmin(payload){await refresh();return request('/rest/v1/rpc/payroll_platform_admin',{payload},session.access_token);}
+
+export async function rawBiometric(payload){await refresh();return request('/rest/v1/rpc/payroll_raw_biometric',{payload},session.access_token);}
+export async function attendanceRegister(payload){await refresh();return request('/rest/v1/rpc/payroll_attendance_register',{payload},session.access_token);}

@@ -1,7 +1,7 @@
 export const money = n => new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:2}).format(Number(n)||0);
 export const esc = v => String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-export function parseCSVRows(text){
-  if(text.length>2_000_000) throw Error('File exceeds 2 MB');
+export function parseCSVRows(text,maxLength=2_000_000){
+  if(text.length>maxLength) throw Error('File exceeds '+Math.floor(maxLength/1_000_000)+' MB');
   const rows=[];let row=[],v='',quoted=false;
   for(let i=0;i<text.length;i++){
     const c=text[i];
