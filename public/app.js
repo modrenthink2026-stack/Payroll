@@ -1,5 +1,5 @@
 import {attendanceSections,selectedAttendanceSection} from './attendance-navigation.js';
-import {rawBiometricColumns,rawBiometricTemplate,prepareRawBiometric,secondsClock,normalAttendance,rawDepartmentReport,rawReportExport,rawReportSummary,rawDepartmentSummary,rawUploadPreview} from './raw-biometric.js';
+import {rawBiometricColumns,rawBiometricTemplate,prepareRawBiometric,secondsClock,normalAttendance,rawDepartmentReport,rawReportExport,rawReportSummary,rawDepartmentSummary,rawUploadPreview,rawValidationIssues,rawValidationExport} from './raw-biometric.js';
 import {prepareMonthlyReport,stageMonthlyReport} from './monthly-attendance.js';
 import {earlyColumns,earlyTemplateCSV,prepareEarlyReport,earlyDrafts,lateColumns,lateTemplateCSV,prepareLateReport,lateDrafts} from './late-csv.js';
 import {absenceColumns,absenceTemplateCSV,prepareAbsenceReport,absenceDrafts} from './absence-csv.js';
@@ -711,7 +711,11 @@ function openRawBiometricImport(){
  $('#raw-validate').onclick=async e=>{const button=e.target;button.disabled=true;const ticket=++version;try{
   const file=$('#raw-file').files[0],selectedMonth=$('#raw-month').value;if(!file)throw Error('Choose your raw biometric CSV');if(!/\.csv$/i.test(file.name)||file.size>16_000_000)throw Error('Use a CSV file up to 16 MB');
   const text=await file.text(),parsed=prepareRawBiometric(text,data.staff,selectedMonth);if(ticket!==version)return;
-  if(parsed.errors.length){$('#raw-validation').innerHTML=`<div class="error">${parsed.errors.length} invalid rows. Fix the identified Staff Master mapping or file fields, then validate again. Nothing was imported.</div>`+table(['File line','Issue'],parsed.errors.slice(0,100).map(r=>[r.line,esc(r.message)]));return;}
+  if(parsed.errors.length){
+   const issues=rawValidationIssues(parsed.errors);
+   $('#raw-validation').innerHTML=`<div class="error">${parsed.errors.length} invalid punch rows grouped into ${issues.length} employee / issue items. Compare the file and Staff Master names below. Initials expanded into different full names, spelling differences and unknown IDs require HR mapping review. Nothing was imported.</div><p>Periods and adjacent single-letter initials are handled automatically. Employee identity, name order and employment dates remain checked.</p><button id="raw-error-export" class="secondary">Download employee mapping issues CSV</button>`+table(['Emp ID','File employee name','Staff Master name','Issue','Punch rows','First file line'],issues.slice(0,200).map(r=>[esc(r.emp_id),esc(r.source_name),esc(r.master_name||'No matching Biometric ID'),esc(r.code==='name_mismatch'?'Confirm name / Biometric ID':r.code==='unknown_id'?'Add or correct Staff Master Biometric ID':r.message),r.count,r.first_line]));
+   $('#raw-error-export').onclick=()=>download('biometric-mapping-issues-'+selectedMonth+'.csv',csvText(rawValidationExport(parsed.errors)));return;
+  }
   if(!parsed.punches.length)throw Error('No punch rows to import');
   const snapshot=await rawBiometric({mode:'load',company_id:cid,month:selectedMonth+'-01'});if(ticket!==version||company.id!==cid)return;
   const preview=rawDepartmentReport(rawUploadPreview(parsed.punches,snapshot,data.staff),data.staff,snapshot.late_plans);validated={parsed,snapshot,selectedMonth};

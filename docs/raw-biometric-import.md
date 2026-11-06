@@ -2,7 +2,7 @@
 
 HR / full-access company roles use **Attendance → Upload raw biometric file**. Accounts can view **Department biometric register** and export reports; staff and manager accounts cannot load this whole-company register.
 
-Upload a CSV with `Emp ID,Emp Name,Log Date,Logtime,Type`. Excel users first save as CSV; XLSX is not parsed directly. Dates accept `18-Sep-26`, `2026-09-18`, or `18-09-2026`; times accept seconds and AM/PM. Types are IN / OUT. Biometric IDs remain text and match the selected company's Staff Master exactly. Names are verified, not used to guess identity. Department and assigned day shift come from Staff Master. The limit is 62,000 raw punches / 16 MB.
+Upload a CSV with `Emp ID,Emp Name,Log Date,Logtime,Type`. Excel users first save as CSV; XLSX is not parsed directly. Dates accept `18-Sep-26`, `2026-09-18`, or `18-09-2026`; times accept seconds and AM/PM. Types are IN / OUT. Biometric IDs remain text and match the selected company's Staff Master exactly. Names are verified, not used to guess identity. Periods and adjacent one-letter initials are normalized. Expanded initials, spelling changes, reordered names and joined full-name words still require HR mapping review. Validation groups repeated errors by employee/issue, displays both file and Staff Master names, and provides an employee mapping issues CSV download. Department and assigned day shift come from Staff Master. The limit is 62,000 raw punches / 16 MB.
 
 1. Choose the month, file and import reference; Validate file shows identity/date errors and a calculated report before any write.
 2. Import raw punches preserves evidence and deduplicates an identical employee/date/time/direction. Import alone does not approve attendance.

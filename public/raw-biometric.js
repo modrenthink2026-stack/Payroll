@@ -4,6 +4,14 @@ import {reportTime} from './late-csv.js';
 export const rawBiometricColumns=['Emp ID','Emp Name','Log Date','Logtime','Type'];
 export const rawBiometricTemplate=()=>rawBiometricColumns.join(',')+'\r\n';
 const norm=s=>String(s??'').trim().replace(/\s+/g,' ').toLowerCase();
+// Periods and adjacent one-letter initials vary between exports; full name tokens
+// retain their order and boundaries. Do not infer expanded initials or spelling.
+export function biometricNameKey(value){
+ const tokens=String(value??'').normalize('NFKC').toLowerCase().replace(/\./g,' ').trim().split(/\s+/).filter(Boolean),parts=[];
+ for(let i=0;i<tokens.length;i++){
+  let token=tokens[i];if(/^\p{L}$/u.test(token)){while(i+1<tokens.length&&/^\p{L}$/u.test(tokens[i+1]))token+=tokens[++i];}parts.push(token);
+ }return parts.join(' ');
+}
 export function secondsClock(value){if(!Number.isSafeInteger(Number(value))||Number(value)<0)return '';const n=Number(value);return [Math.floor(n/3600),Math.floor(n/60)%60,n%60].map(n=>String(n).padStart(2,'0')).join(':');}
 export function prepareRawBiometric(text,staff,month){
  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))throw Error('Choose a report month');
@@ -13,18 +21,18 @@ export function prepareRawBiometric(text,staff,month){
  if(!records.length||records.length>62000)throw Error('Upload 1 to 62,000 raw punch rows');
  const byId=new Map();for(const s of staff){const id=String(s.biometric_id??'');if(!byId.has(id))byId.set(id,[]);byId.get(id).push(s);}
  const punches=[],errors=[],seen=new Set();let duplicates=0;
- records.forEach((r,i)=>{try{
+ records.forEach((r,i)=>{const context={emp_id:String(r[0]??'').trim(),source_name:String(r[1]??'').trim(),master_name:'',department:''};try{
   if(r.length!==5||r.some(x=>!x.trim()))throw Error('All five fields are required');
   const [id,name,dateValue,timeValue,type]=r.map(x=>x.trim());
   const candidates=byId.get(id)||[];if(candidates.length!==1)throw Error('Unknown or ambiguous Emp ID '+id+' in this company');
-  const s=candidates[0];if(norm(s.name)!==norm(name))throw Error('Name does not match Staff Master for '+id);
+  const s=candidates[0];context.master_name=s.name;context.department=s.department||'';if(biometricNameKey(s.name)!==biometricNameKey(name))throw Error('Name does not match Staff Master for '+id+': file \"'+name+'\", Staff Master \"'+s.name+'\"');
   const date=absenceDate(dateValue.replace(/^(\d{2})-(\d{2})-(\d{4})$/,'$3-$2-$1'));
   if(date.slice(0,7)!==month)throw Error('Date is outside the selected month');
-  if(date<s.joining_date||s.leaving_date&&date>s.leaving_date||s.status==='separated'&&!s.leaving_date)throw Error('Punch is outside employment dates');
+  if(date<s.joining_date||s.leaving_date&&date>s.leaving_date||s.status==='separated'&&!s.leaving_date)throw Error('Punch is outside employment dates: '+date+'; recorded employment '+s.joining_date+' to '+(s.leaving_date||'present'));
   const time=reportTime(timeValue).time,direction=type.toLowerCase();if(!['in','out'].includes(direction))throw Error('Type must be IN or OUT');
   const key=[s.id,date,time,direction].join('|');if(seen.has(key)){duplicates++;return;}seen.add(key);
   punches.push({biometric_id:id,name:s.name,work_date:date,log_time:time,direction,manual_entry:false});
- }catch(e){errors.push({line:i+2,message:e.message});}});
+ }catch(e){errors.push({line:i+2,message:e.message,...context,code:e.message.startsWith('Name does')?'name_mismatch':e.message.startsWith('Unknown')?'unknown_id':e.message.startsWith('Punch is outside')?'employment_dates':'invalid_row'});}});
  return {punches,errors,duplicates,total:records.length};
 }
 export function normalAttendance(row){
@@ -71,3 +79,6 @@ export function rawReportExport(rows){return rows.map(r=>({'Department':r.depart
 export function rawReportSummary(rows){const map=new Map();for(const r of rows){const key=r.staff_id;if(!map.has(key))map.set(key,{Department:r.department,'Emp ID':r.emp_id,'Emp Name':r.name,'Attendance rows':0,'Late entries':0,seconds:0,'Exempt entries':0,'Proposed adjustment days':0,'Approved Bio LOP days':0,'Pending attendance rows':0});const s=map.get(key);s['Attendance rows']++;if(r.late_seconds>0){s['Late entries']++;s.seconds+=r.late_seconds;}if(r.exemption==='Exemption')s['Exempt entries']++;s['Proposed adjustment days']+=r.proposed_lop_days;s['Approved Bio LOP days']+=r.approved_lop_days;if(!r.source_current)s['Pending attendance rows']++;}return [...map.values()].map(({seconds,...r})=>({...r,'Total late duration':secondsClock(seconds)}));}
 export function rawUploadPreview(punches,snapshot,staff){const byId=new Map(staff.map(s=>[String(s.biometric_id),s]));const groups=new Map(snapshot.rows.map(r=>[r.staff_id+'/'+r.work_date,structuredClone(r)]));for(const p of punches){const s=byId.get(p.biometric_id),key=s.id+'/'+p.work_date;let r=groups.get(key);if(!r){r={staff_id:s.id,work_date:p.work_date,staff:s,punches:[],attendance:null,working_day:true,leave_count:0};groups.set(key,r);}if(!r.punches.some(x=>x.time===p.log_time&&x.direction===p.direction)){r.punches.push({time:p.log_time,direction:p.direction,manual_entry:false});r.evidence_current=false;}}return [...groups.values()];}
 export function rawDepartmentSummary(rows){const result=new Map();for(const r of rawReportSummary(rows)){const d=r.Department;if(!result.has(d))result.set(d,{Department:d,Employees:0,'Attendance rows':0,'Late entries':0,'Exempt entries':0,'Proposed adjustment days':0,'Approved Bio LOP days':0,'Pending attendance rows':0,seconds:0});const s=result.get(d);s.Employees++;for(const key of ['Attendance rows','Late entries','Exempt entries','Proposed adjustment days','Approved Bio LOP days','Pending attendance rows'])s[key]+=r[key];s.seconds+=r['Total late duration'].split(':').reduce((a,v)=>a*60+Number(v),0);}return [...result.values()].map(({seconds,...r})=>({...r,'Total late duration':secondsClock(seconds)}));}
+
+export function rawValidationIssues(errors){const groups=new Map();for(const e of errors){const key=JSON.stringify([e.emp_id,e.source_name,e.master_name,e.code]);if(!groups.has(key))groups.set(key,{emp_id:e.emp_id||'',source_name:e.source_name||'',master_name:e.master_name||'',department:e.department||'',code:e.code||'invalid_row',message:e.message,count:0,first_line:e.line});groups.get(key).count++;}return [...groups.values()];}
+export function rawValidationExport(errors){return rawValidationIssues(errors).map(e=>({'Emp ID':e.emp_id,'File employee name':e.source_name,'Staff Master name':e.master_name,'Department':e.department,'Issue':e.code,'Affected punch rows':e.count,'First file line':e.first_line,'Details':e.message}));}
