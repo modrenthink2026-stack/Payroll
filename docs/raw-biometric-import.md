@@ -21,3 +21,13 @@ Employee summary and department summary separately show late totals, exempt inci
 The additive `payroll_raw_biometric` RPC reuses the existing `attendance_register_v1` permissions, module/release controls, company locks, stale-source checks, idempotency and audit trail. It does not enable modules for any company. If the register is disabled, the Platform Administrator must enable the existing tested register feature through the established release process. No service-role key or machine credential is used in the browser. Live device synchronization remains separate.
 
 Checks: Node parser/report tests include the confirmed 01:06:13 example, exact 25:00/25:01 boundary, duplicate punches, tenant-specific identity matching, stale decisions, missing/overnight/manual exceptions and a 60,000-punch file. SQL fixtures verify second-precision and legacy hashes; the integration fixture runs entirely inside a rollback transaction.
+
+## Upload continuation and monthly scale
+
+Attendance and Monthly biometric register are separate company controls. Platform administration now exposes both controls; saving core modules retains the selected register setting. A disabled register produces an actionable validation message instead of an unexplained stop.
+
+Validation does not save punches. The explicit Import raw punches action now appears before the preview, shows progress and persistent import errors, and requests the import reference inline. The next steps remain reviewed complete days, attendance exceptions, monthly late decisions and combined HR confirmation.
+
+The backend validates the full punch batch before inserting it atomically. It retains company/role/module checks, month locks, source checks, idempotency, deduplication, manual flag conflict checks and auditing. Raw payloads continue using Staff Master names selected by biometric ID. The two attendance RPCs have a 60-second timeout; ordinary API limits are unchanged. Day results are materialized once and missing attendance skips stored-evidence hash checks; reviewed entries retain the original checks.
+
+Regression fixtures: `tests/raw-biometric-baseline.sql` compares all register fields with the earlier query on synthetic reviewed/missing days. `tests/raw-biometric-scale.sql` imports 10,824 punches for 246 synthetic employees and rolls back all records. Neither fixture imports real staff punches or confirms payroll.
