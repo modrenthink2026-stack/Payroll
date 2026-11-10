@@ -74,3 +74,5 @@ export async function platformAdmin(payload){await refresh();return request('/re
 
 export async function rawBiometric(payload){await refresh();return request('/rest/v1/rpc/payroll_raw_biometric',{payload},session.access_token);}
 export async function attendanceRegister(payload){await refresh();return request('/rest/v1/rpc/payroll_attendance_register',{payload},session.access_token);}
+
+export async function holidayCalendar(payload){await refresh();return request('/rest/v1/rpc/payroll_holidays',{payload},session.access_token);}

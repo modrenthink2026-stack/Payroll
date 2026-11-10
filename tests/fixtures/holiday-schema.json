@@ -1,0 +1,1748 @@
+[
+  {
+    "schema": "payroll_private",
+    "name": "attendance_periods",
+    "columns": [
+      {
+        "name": "company_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "month",
+        "type": "date",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "status",
+        "type": "text",
+        "default": "'draft'::text",
+        "generated": ""
+      },
+      {
+        "name": "source_hash",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "snapshot",
+        "type": "jsonb",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "finalized_by",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "finalized_at",
+        "type": "timestamp with time zone",
+        "default": null,
+        "generated": ""
+      }
+    ]
+  },
+  {
+    "schema": "payroll_private",
+    "name": "monthly_salary_deductions",
+    "columns": [
+      {
+        "name": "company_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "staff_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "month",
+        "type": "date",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "installment",
+        "type": "numeric",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "advances",
+        "type": "numeric",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "welfare",
+        "type": "numeric",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "reason",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "revision",
+        "type": "integer",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "changed_by",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "changed_at",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "generated": ""
+      },
+      {
+        "name": "special_allowance",
+        "type": "numeric",
+        "default": "0",
+        "generated": ""
+      }
+    ]
+  },
+  {
+    "schema": "payroll_private",
+    "name": "salary_flow_policies",
+    "columns": [
+      {
+        "name": "company_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "effective_from",
+        "type": "date",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "da_rate",
+        "type": "numeric",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "hra_rate",
+        "type": "numeric",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "reason",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "revision",
+        "type": "integer",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "changed_by",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "changed_at",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "generated": ""
+      }
+    ]
+  },
+  {
+    "schema": "public",
+    "name": "payroll_assessments",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "generated": ""
+      },
+      {
+        "name": "company_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "staff_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "period",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "ratings",
+        "type": "jsonb",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "score",
+        "type": "numeric(4,2)",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "comments",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "status",
+        "type": "text",
+        "default": "'finalized'::text",
+        "generated": ""
+      },
+      {
+        "name": "created_by",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "generated": ""
+      }
+    ]
+  },
+  {
+    "schema": "public",
+    "name": "payroll_attendance",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "generated": ""
+      },
+      {
+        "name": "company_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "staff_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "work_date",
+        "type": "date",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "status",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "in_time",
+        "type": "time without time zone",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "out_time",
+        "type": "time without time zone",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "late_minutes",
+        "type": "integer",
+        "default": "0",
+        "generated": ""
+      },
+      {
+        "name": "early_minutes",
+        "type": "integer",
+        "default": "0",
+        "generated": ""
+      },
+      {
+        "name": "note",
+        "type": "text",
+        "default": "''::text",
+        "generated": ""
+      },
+      {
+        "name": "reviewed_by",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "shift_snapshot",
+        "type": "jsonb",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "raw_late_minutes",
+        "type": "integer",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "punch_hash",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "review_context_hash",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      }
+    ]
+  },
+  {
+    "schema": "public",
+    "name": "payroll_audit",
+    "columns": [
+      {
+        "name": "id",
+        "type": "bigint",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "company_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "actor",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "action",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "record_id",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "generated": ""
+      }
+    ]
+  },
+  {
+    "schema": "public",
+    "name": "payroll_companies",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "generated": ""
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "address",
+        "type": "text",
+        "default": "''::text",
+        "generated": ""
+      },
+      {
+        "name": "settings",
+        "type": "jsonb",
+        "default": "'{\"pf_cap\": 25000, \"pf_rate\": 12, \"esi_rate\": 0.75, \"holidays\": [], \"signatory\": \"\", \"late_grace\": 10, \"deposit_cap\": 0, \"early_grace\": 10, \"working_days\": [1, 2, 3, 4, 5, 6], \"effective_from\": \"2026-10-01\", \"deposit_enabled\": false, \"pf_employer_rate\": 12, \"esi_employer_rate\": 3.25, \"statutory_reviewed\": false}'::jsonb",
+        "generated": ""
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "generated": ""
+      },
+      {
+        "name": "platform_status",
+        "type": "text",
+        "default": "'active'::text",
+        "generated": ""
+      },
+      {
+        "name": "enabled_modules",
+        "type": "jsonb",
+        "default": "'{\"leave\": true, \"staff\": true, \"letters\": true, \"payroll\": true, \"reports\": true, \"settings\": true, \"attendance\": true, \"assessments\": true}'::jsonb",
+        "generated": ""
+      },
+      {
+        "name": "platform_revision",
+        "type": "integer",
+        "default": "0",
+        "generated": ""
+      }
+    ]
+  },
+  {
+    "schema": "public",
+    "name": "payroll_deposits",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "generated": ""
+      },
+      {
+        "name": "company_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "staff_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "amount",
+        "type": "numeric(14,2)",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "reason",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "line_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "created_by",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "generated": ""
+      }
+    ]
+  },
+  {
+    "schema": "public",
+    "name": "payroll_documents",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "generated": ""
+      },
+      {
+        "name": "company_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "staff_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "type",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "recipient",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "body",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "number",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "signatory",
+        "type": "text",
+        "default": "''::text",
+        "generated": ""
+      },
+      {
+        "name": "status",
+        "type": "text",
+        "default": "'draft'::text",
+        "generated": ""
+      },
+      {
+        "name": "created_by",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "approved_by",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "issued_at",
+        "type": "timestamp with time zone",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "effective_date",
+        "type": "date",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "generated": ""
+      }
+    ]
+  },
+  {
+    "schema": "public",
+    "name": "payroll_increments",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "generated": ""
+      },
+      {
+        "name": "company_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "staff_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "effective_from",
+        "type": "date",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "basic",
+        "type": "numeric(14,2)",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "da",
+        "type": "numeric(14,2)",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "hra",
+        "type": "numeric(14,2)",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "other",
+        "type": "numeric(14,2)",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "reason",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "status",
+        "type": "text",
+        "default": "'recommended'::text",
+        "generated": ""
+      },
+      {
+        "name": "created_by",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "reviewed_by",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "approved_by",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "cca",
+        "type": "numeric(14,2)",
+        "default": "0",
+        "generated": ""
+      },
+      {
+        "name": "hod_allowance",
+        "type": "numeric(14,2)",
+        "default": "0",
+        "generated": ""
+      },
+      {
+        "name": "gross",
+        "type": "numeric(14,2)",
+        "default": "((((basic + da) + hra) + cca) + other)",
+        "generated": "s"
+      },
+      {
+        "name": "cum_gross",
+        "type": "numeric(14,2)",
+        "default": "(((((basic + da) + hra) + cca) + other) + hod_allowance)",
+        "generated": "s"
+      },
+      {
+        "name": "salary_mode",
+        "type": "text",
+        "default": "'component'::text",
+        "generated": ""
+      },
+      {
+        "name": "consolidated_amount",
+        "type": "numeric(14,2)",
+        "default": "\nCASE\n    WHEN (salary_mode = 'consolidated'::text) THEN other\n    ELSE (0)::numeric\nEND",
+        "generated": "s"
+      },
+      {
+        "name": "deposit_eligible_override",
+        "type": "boolean",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "pt_override",
+        "type": "numeric(14,2)",
+        "default": null,
+        "generated": ""
+      }
+    ]
+  },
+  {
+    "schema": "public",
+    "name": "payroll_late_reviews",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "generated": ""
+      },
+      {
+        "name": "company_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "staff_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "month",
+        "type": "date",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "source_hash",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "plan",
+        "type": "jsonb",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "decisions",
+        "type": "jsonb",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "cl_units",
+        "type": "numeric",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "status",
+        "type": "text",
+        "default": "'active'::text",
+        "generated": ""
+      },
+      {
+        "name": "reason",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "reviewed_by",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "reviewed_at",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "generated": ""
+      },
+      {
+        "name": "reopened_by",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "reopened_at",
+        "type": "timestamp with time zone",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "reopen_reason",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      }
+    ]
+  },
+  {
+    "schema": "public",
+    "name": "payroll_leave_approvers",
+    "columns": [
+      {
+        "name": "company_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "office",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "user_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "updated_by",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "generated": ""
+      }
+    ]
+  },
+  {
+    "schema": "public",
+    "name": "payroll_leave_ledger",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "generated": ""
+      },
+      {
+        "name": "company_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "staff_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "leave_type",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "units",
+        "type": "numeric(6,2)",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "reason",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "leave_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "event",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "generated": ""
+      }
+    ]
+  },
+  {
+    "schema": "public",
+    "name": "payroll_leave_policies",
+    "columns": [
+      {
+        "name": "company_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "annual_entitlement",
+        "type": "numeric(6,2)",
+        "default": "0",
+        "generated": ""
+      },
+      {
+        "name": "paid",
+        "type": "boolean",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "default": "''::text",
+        "generated": ""
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "default": "''::text",
+        "generated": ""
+      },
+      {
+        "name": "active",
+        "type": "boolean",
+        "default": "true",
+        "generated": ""
+      },
+      {
+        "name": "half_day_allowed",
+        "type": "boolean",
+        "default": "true",
+        "generated": ""
+      },
+      {
+        "name": "max_days_per_request",
+        "type": "numeric(5,1)",
+        "default": null,
+        "generated": ""
+      }
+    ]
+  },
+  {
+    "schema": "public",
+    "name": "payroll_leaves",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "generated": ""
+      },
+      {
+        "name": "company_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "staff_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "leave_type",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "from_date",
+        "type": "date",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "to_date",
+        "type": "date",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "half_day",
+        "type": "boolean",
+        "default": "false",
+        "generated": ""
+      },
+      {
+        "name": "units",
+        "type": "numeric(6,2)",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "reason",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "status",
+        "type": "text",
+        "default": "'submitted'::text",
+        "generated": ""
+      },
+      {
+        "name": "created_by",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "reviewed_by",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "generated": ""
+      },
+      {
+        "name": "approval_office",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      }
+    ]
+  },
+  {
+    "schema": "public",
+    "name": "payroll_lines",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "generated": ""
+      },
+      {
+        "name": "company_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "run_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "staff_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "earnings",
+        "type": "jsonb",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "deductions",
+        "type": "jsonb",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "employer",
+        "type": "jsonb",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "gross",
+        "type": "numeric(14,2)",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "net",
+        "type": "numeric(14,2)",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "paid_days",
+        "type": "numeric(6,2)",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "lop",
+        "type": "numeric(6,2)",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "issues",
+        "type": "jsonb",
+        "default": "'[]'::jsonb",
+        "generated": ""
+      },
+      {
+        "name": "payment_reference",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "staff_snapshot",
+        "type": "jsonb",
+        "default": "'{}'::jsonb",
+        "generated": ""
+      },
+      {
+        "name": "deposit_opening",
+        "type": "numeric(14,2)",
+        "default": "0",
+        "generated": ""
+      },
+      {
+        "name": "deposit_closing",
+        "type": "numeric(14,2)",
+        "default": "0",
+        "generated": ""
+      },
+      {
+        "name": "late_summary",
+        "type": "jsonb",
+        "default": "'{}'::jsonb",
+        "generated": ""
+      }
+    ]
+  },
+  {
+    "schema": "public",
+    "name": "payroll_members",
+    "columns": [
+      {
+        "name": "company_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "user_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "role",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      }
+    ]
+  },
+  {
+    "schema": "public",
+    "name": "payroll_platform_admins",
+    "columns": [
+      {
+        "name": "user_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "generated": ""
+      },
+      {
+        "name": "created_by",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      }
+    ]
+  },
+  {
+    "schema": "public",
+    "name": "payroll_profiles",
+    "columns": [
+      {
+        "name": "staff_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "company_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "bank_account",
+        "type": "text",
+        "default": "''::text",
+        "generated": ""
+      },
+      {
+        "name": "ifsc",
+        "type": "text",
+        "default": "''::text",
+        "generated": ""
+      },
+      {
+        "name": "pan",
+        "type": "text",
+        "default": "''::text",
+        "generated": ""
+      },
+      {
+        "name": "uan",
+        "type": "text",
+        "default": "''::text",
+        "generated": ""
+      },
+      {
+        "name": "esi_number",
+        "type": "text",
+        "default": "''::text",
+        "generated": ""
+      },
+      {
+        "name": "pf_enabled",
+        "type": "boolean",
+        "default": "false",
+        "generated": ""
+      },
+      {
+        "name": "esi_enabled",
+        "type": "boolean",
+        "default": "false",
+        "generated": ""
+      },
+      {
+        "name": "annual_tax",
+        "type": "numeric(14,2)",
+        "default": "0",
+        "generated": ""
+      },
+      {
+        "name": "tax_paid",
+        "type": "numeric(14,2)",
+        "default": "0",
+        "generated": ""
+      },
+      {
+        "name": "other_deductions",
+        "type": "numeric(14,2)",
+        "default": "0",
+        "generated": ""
+      },
+      {
+        "name": "pt",
+        "type": "numeric(14,2)",
+        "default": "0",
+        "generated": ""
+      },
+      {
+        "name": "deposit_eligible",
+        "type": "boolean",
+        "default": "false",
+        "generated": ""
+      }
+    ]
+  },
+  {
+    "schema": "public",
+    "name": "payroll_punches",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "generated": ""
+      },
+      {
+        "name": "company_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "staff_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "device_id",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "event_id",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "event_time",
+        "type": "timestamp with time zone",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "direction",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "generated": ""
+      },
+      {
+        "name": "manual_entry",
+        "type": "boolean",
+        "default": "false",
+        "generated": ""
+      }
+    ]
+  },
+  {
+    "schema": "public",
+    "name": "payroll_runs",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "generated": ""
+      },
+      {
+        "name": "company_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "month",
+        "type": "date",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "status",
+        "type": "text",
+        "default": "'calculated'::text",
+        "generated": ""
+      },
+      {
+        "name": "created_by",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "hr_by",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "accountant_by",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "authorized_by",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "input_hash",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "snapshot",
+        "type": "jsonb",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "generated": ""
+      }
+    ]
+  },
+  {
+    "schema": "public",
+    "name": "payroll_salaries",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "generated": ""
+      },
+      {
+        "name": "company_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "staff_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "effective_from",
+        "type": "date",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "basic",
+        "type": "numeric(14,2)",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "da",
+        "type": "numeric(14,2)",
+        "default": "0",
+        "generated": ""
+      },
+      {
+        "name": "hra",
+        "type": "numeric(14,2)",
+        "default": "0",
+        "generated": ""
+      },
+      {
+        "name": "other",
+        "type": "numeric(14,2)",
+        "default": "0",
+        "generated": ""
+      },
+      {
+        "name": "approved_by",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "cca",
+        "type": "numeric(14,2)",
+        "default": "0",
+        "generated": ""
+      },
+      {
+        "name": "hod_allowance",
+        "type": "numeric(14,2)",
+        "default": "0",
+        "generated": ""
+      },
+      {
+        "name": "gross",
+        "type": "numeric(14,2)",
+        "default": "((((basic + da) + hra) + cca) + other)",
+        "generated": "s"
+      },
+      {
+        "name": "cum_gross",
+        "type": "numeric(14,2)",
+        "default": "(((((basic + da) + hra) + cca) + other) + hod_allowance)",
+        "generated": "s"
+      },
+      {
+        "name": "salary_mode",
+        "type": "text",
+        "default": "'component'::text",
+        "generated": ""
+      },
+      {
+        "name": "consolidated_amount",
+        "type": "numeric(14,2)",
+        "default": "\nCASE\n    WHEN (salary_mode = 'consolidated'::text) THEN other\n    ELSE (0)::numeric\nEND",
+        "generated": "s"
+      },
+      {
+        "name": "deposit_eligible_override",
+        "type": "boolean",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "pt_override",
+        "type": "numeric(14,2)",
+        "default": null,
+        "generated": ""
+      }
+    ]
+  },
+  {
+    "schema": "public",
+    "name": "payroll_staff",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "generated": ""
+      },
+      {
+        "name": "company_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "email",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "department",
+        "type": "text",
+        "default": "''::text",
+        "generated": ""
+      },
+      {
+        "name": "designation",
+        "type": "text",
+        "default": "''::text",
+        "generated": ""
+      },
+      {
+        "name": "joining_date",
+        "type": "date",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "leaving_date",
+        "type": "date",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "status",
+        "type": "text",
+        "default": "'active'::text",
+        "generated": ""
+      },
+      {
+        "name": "service_status",
+        "type": "text",
+        "default": "'probation'::text",
+        "generated": ""
+      },
+      {
+        "name": "manager_user_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "user_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "biometric_id",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "leave_balances",
+        "type": "jsonb",
+        "default": "'{\"CL\": 12, \"EL\": 0, \"SL\": 12}'::jsonb",
+        "generated": ""
+      },
+      {
+        "name": "probation_end",
+        "type": "date",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "shift_name",
+        "type": "text",
+        "default": "'General'::text",
+        "generated": ""
+      },
+      {
+        "name": "shift_start",
+        "type": "time without time zone",
+        "default": "'09:00:00'::time without time zone",
+        "generated": ""
+      },
+      {
+        "name": "shift_end",
+        "type": "time without time zone",
+        "default": "'18:00:00'::time without time zone",
+        "generated": ""
+      },
+      {
+        "name": "break_minutes",
+        "type": "integer",
+        "default": "0",
+        "generated": ""
+      },
+      {
+        "name": "late_grace",
+        "type": "integer",
+        "default": "0",
+        "generated": ""
+      },
+      {
+        "name": "early_grace",
+        "type": "integer",
+        "default": "0",
+        "generated": ""
+      },
+      {
+        "name": "erp_code",
+        "type": "text",
+        "default": "''::text",
+        "generated": ""
+      },
+      {
+        "name": "employment_status",
+        "type": "text",
+        "default": "''::text",
+        "generated": ""
+      },
+      {
+        "name": "employment_category",
+        "type": "text",
+        "default": "''::text",
+        "generated": ""
+      },
+      {
+        "name": "leave_group",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "login_name",
+        "type": "text",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "employee_number",
+        "type": "bigint",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "employee_ref",
+        "type": "text",
+        "default": "('EMP-'::text || lpad((employee_number)::text, GREATEST(6, length((employee_number)::text)), '0'::text))",
+        "generated": "s"
+      }
+    ]
+  },
+  {
+    "schema": "public",
+    "name": "payroll_staff_details",
+    "columns": [
+      {
+        "name": "staff_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "company_id",
+        "type": "uuid",
+        "default": null,
+        "generated": ""
+      },
+      {
+        "name": "details",
+        "type": "jsonb",
+        "default": "'{}'::jsonb",
+        "generated": ""
+      },
+      {
+        "name": "source_records",
+        "type": "jsonb",
+        "default": "'[]'::jsonb",
+        "generated": ""
+      }
+    ]
+  }
+]
