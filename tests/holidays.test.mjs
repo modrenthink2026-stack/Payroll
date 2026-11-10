@@ -1,0 +1,6 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {holidayRows} from '../public/holidays.js';
+const rows=[{id:'h1',name:'Teaching break',from_date:'2026-12-29',to_date:'2027-01-03',departments:['Teaching'],active:true},{id:'h2',name:'Common holiday',from_date:'2026-10-02',to_date:'2026-10-02',departments:[],active:true},{id:'h3',name:'Cancelled',from_date:'2026-10-09',to_date:'2026-10-10',departments:['Office'],active:false}];
+test('Holiday ranges include both years and legacy common dates remain visible',()=>{const result=holidayRows({holidays:['2026-01-26','2025-01-26']},{enabled:true,items:rows},2026);assert.equal(result.length,4);assert.equal(result[0].from_date,'2026-01-26');assert.equal(result[0].legacy,true);assert.equal(holidayRows({}, {enabled:true,items:rows},2027)[0].id,'h1');});
+test('Department selection retains common holidays and excludes another department',()=>{const result=holidayRows({holidays:['2026-01-26']},{enabled:true,items:rows},2026,'Teaching');assert.deepEqual(result.map(r=>r.id),[null,'h2','h1']);});
+test('Feature-disabled companies keep only legacy holidays',()=>{assert.equal(holidayRows({holidays:['2026-01-26']},{enabled:false,items:rows},2026).length,1);assert.deepEqual(holidayRows({},null,2026),[]);});

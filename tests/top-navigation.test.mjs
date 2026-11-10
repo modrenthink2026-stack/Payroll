@@ -9,7 +9,7 @@ const renderSource=source.slice(source.indexOf('function render(){'),source.inde
 function workspace(role,page='settings',overrides={}){
  const app={innerHTML:''},company={id:'c1',name:'Example School',role,...overrides},switcher={};
  const views=Object.fromEntries(pagesFor(role).map(p=>[p,()=>'<h1>'+p+'</h1>']));
- const context=vm.createContext({app,company,companies:[company],page,views,pagesFor,esc,empty:(title,text)=>title+' '+text,self:()=>null,navIcon:()=>'',btn:(label,action)=>'<button data-action="'+action+'">'+label+'</button>',$:selector=>selector==='#company-switch'?switcher:null});
+ const context=vm.createContext({data:{holiday_calendar:{enabled:true}},app,company,companies:[company],page,views,pagesFor,esc,empty:(title,text)=>title+' '+text,self:()=>null,navIcon:()=>'',btn:(label,action)=>'<button data-action="'+action+'">'+label+'</button>',$:selector=>selector==='#company-switch'?switcher:null});
  vm.runInContext(renderSource+';render();',context);return {html:app.innerHTML,switcher};
 }
 test('Top module banner preserves every role menu and puts navigation before workspace content',()=>{

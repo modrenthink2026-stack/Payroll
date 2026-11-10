@@ -1,9 +1,9 @@
 export const fullAccess=role=>['admin','principal','president'].includes(role);
 export function pagesFor(role){
- if(fullAccess(role))return ['overview','staff','attendance','leave','payroll','letters','assessments','reports','settings'];
+ if(fullAccess(role))return ['overview','staff','attendance','leave','holidays','payroll','letters','assessments','reports','settings'];
  if(role==='staff')return ['leave','balances','payroll','leave_rules','holidays'];
- if(role==='hr')return ['staff','attendance','leave','letters'];
- if(role==='accountant')return ['overview','staff','attendance','leave','payroll','reports'];
+ if(role==='hr')return ['staff','attendance','leave','holidays','letters'];
+ if(role==='accountant')return ['overview','staff','attendance','leave','holidays','payroll','reports'];
  return ['overview','staff','attendance','leave','assessments','reports'];
 }
 export function loginEmail(identifier){
