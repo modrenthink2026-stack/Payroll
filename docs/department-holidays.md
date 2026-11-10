@@ -1,6 +1,6 @@
 # Department holiday calendar
 
-Status: implemented on the feature branch; database deployment and Demo enablement await explicit approval after automatic deployment review rejected the core payroll migration.
+The database migration is applied and the feature is enabled for Payroll Demo only. No holiday dates are prefilled.
 
 HR and full-access company roles can open **Holiday list**, add a name and inclusive date range, and choose All departments or Selected departments. They can edit or cancel entries. Cancellation retains history and permits restoration through Edit. Staff see common holidays and their own department's active entries.
 
@@ -10,7 +10,7 @@ The migration adds private calendar/history tables and an authenticated, company
 
 Holiday changes are blocked for affected confirmed attendance or locked/released/paid payroll months, and when affected submitted/approved leave exists. Resolve or reopen those workflows first. Holidays do not automatically approve attendance, debit leave, approve payroll or execute payment.
 
-After approval, apply `supabase/migrations/20261110075724_department_holidays.sql`, run the hosted rollback integration fixture, and enable only Payroll Demo's `department_holidays_enabled` setting. The other company settings remain unchanged. Publish the frontend after the backend is verified.
+Deployment sequence: apply the guarded migration, run the hosted rollback fixture, enable the calendar for the selected test company, and publish the frontend. The core version guard rejects concurrent function changes; rebuild and review the migration if it fires.
 
 Validation:
 
@@ -18,4 +18,4 @@ Validation:
 - `node tests/department-holidays-db.mjs`: isolated PostgreSQL integration with a metadata-only schema fixture and controlled module/feature flags. No production data is copied. It tests department scope, common dates, range endpoints, company isolation, staff write denial, stale revisions, approval/confirmation locks, late exemptions, leave-day counting, payroll holiday pay and cancellation history.
 - `tests/integration/department-holidays.sql`: the same synthetic rollback checks for the hosted schema after approved deployment.
 
-The isolated test controls the existing release/module flags. Full hosted integration and a browser check of the deployed calendar remain pending; local tests do not establish deployment success.
+Both the isolated test and the hosted synthetic rollback fixture passed. The isolated fixture controls release/module flags. A signed-in browser check remains separate from database verification.
