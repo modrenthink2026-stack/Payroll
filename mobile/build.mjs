@@ -1,3 +1,4 @@
+import {adaptPayrollUI} from './ui-adapter.mjs';
 import {cp, mkdir, readFile, writeFile, rm} from 'node:fs/promises';
 import {dirname,resolve,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -11,6 +12,7 @@ const www=join(here,'www'),stage=join(here,'.web-source');
 await rm(www,{recursive:true,force:true});await mkdir(www,{recursive:true});
 if(app.kind==='payroll'){
  await cp(join(root,'public'),www,{recursive:true});
+ await adaptPayrollUI(www);
  const api=await readFile(join(www,'api.js'),'utf8');
  await writeFile(join(www,'api.js'),adaptPayroll(api,app.webOrigin));
  const config=(await readFile(join(www,'config.js'),'utf8')).replace("url: '/supabase'",'url: '+JSON.stringify(app.supabaseUrl));
@@ -22,15 +24,20 @@ if(app.kind==='payroll'){
  await mkdir(join(stage,'supabase/functions/_shared'),{recursive:true});
  await cp(join(root,'supabase/functions/_shared/login-identifiers.js'),join(stage,'supabase/functions/_shared/login-identifiers.js'));
  await adaptProject(stage,app.webOrigin);
+ await cp(join(here,'ProjectMobileHeader.jsx'),join(stage,'src/workspace-header.jsx'));
+ let login=await readFile(join(stage,'src/supabase-login.jsx'),'utf8');
+ login=login.replace('Manage your projects, income and payments.','Your projects, at hand.');
+ await writeFile(join(stage,'src/supabase-login.jsx'),login);
  const result=spawnSync(process.execPath,[join(root,'node_modules/vite/bin/vite.js'),'build',stage,'--outDir',www,'--base','/'],{cwd:root,env:{...process.env,GITHUB_REPOSITORY:''},stdio:'inherit'});
  if(result.status!==0)throw Error('Project Manager web build failed');
 }
 await build({entryPoints:[join(here,'native-shell.js')],bundle:true,format:'iife',target:'es2022',outfile:join(www,'native-shell.js'),minify:true,legalComments:'eof'});
 await cp(join(here,'mobile.css'),join(www,'mobile.css'));
+await build({entryPoints:[join(here,'mobile-ux.js')],bundle:true,format:'iife',outfile:join(www,'mobile-ux.js'),minify:true});
 let html=await readFile(join(www,'index.html'),'utf8');
 html=html.replace(/width=device-width,\s*initial-scale=1(?:\.0)?/, 'width=device-width,initial-scale=1,viewport-fit=cover');
 const policy=`default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' blob: ${app.supabaseUrl}; img-src 'self' data: blob:; object-src 'none'; base-uri 'self'; form-action 'self'`;
 html=html.replace('<head>','<head><meta http-equiv="Content-Security-Policy" content="'+policy+'">');
-html=html.replace('</head>','<link rel="stylesheet" href="/mobile.css"><script src="/native-shell.js"></script></head>');
+html=html.replace('</head>','<link rel="stylesheet" href="/mobile.css"><script src="/native-shell.js"></script><script defer src="/mobile-ux.js"></script></head>');
 await writeFile(join(www,'index.html'),html);
 console.log(`${app.name}: bundled mobile web assets ready. No production records or web sources were changed.`);

@@ -1,3 +1,4 @@
+import {checkWorkspace} from './workspace-ui-check.mjs';
 import {createServer} from 'node:http';
 import {readFile,mkdir} from 'node:fs/promises';
 import {resolve,extname,join} from 'node:path';
@@ -9,7 +10,7 @@ const server=createServer(async(req,res)=>{try{const path=resolve(root,'.'+new U
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const browser=await chromium.launch({...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{}),headless:true,args:['--no-sandbox']});
 try{
- for(const viewport of [{width:390,height:844},{width:1024,height:768}]){
+ for(const viewport of [{width:320,height:740},{width:390,height:844},{width:1024,height:768}]){
   const page=await browser.newPage({viewport});const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/*',route=>{if(new URL(route.request().url()).hostname==='127.0.0.1')return route.continue();return route.abort();});
   await page.goto(`http://127.0.0.1:${server.address().port}/`);await page.locator('input').first().waitFor();
@@ -17,6 +18,7 @@ try{
   assert.deepEqual(errors,[]);await page.screenshot({path:join(qa,`login-${viewport.width}.png`),fullPage:true});
   await page.close();
  }
+ await checkWorkspace(browser,`http://127.0.0.1:${server.address().port}`,qa);
  const mocks={
   '@capacitor/core':"export const Capacitor={isNativePlatform:()=>true};export const CapacitorHttp={request:async()=>{throw Error('Unexpected account network call in synthetic UI check')}}",
   '@capacitor/app':"export const App={addListener:async(name,fn)=>{(window.__nativeListeners??={})[name]=fn},exitApp:async()=>{window.__exit=true}}",
