@@ -13,3 +13,5 @@ html{-webkit-text-size-adjust:100%;scroll-padding-top:90px}body{margin:0;backgro
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;animation:none!important;transition:none!important}}@media print{.m-header,.m-tabs,.m-sheet,#native-connectivity,.m-table-hint{display:none!important}.main{padding:0!important}.m-record-table{display:table!important}.m-record-table tr{display:table-row!important}.m-record-table td{display:table-cell!important}.m-record-table td::before{display:none}}
 
 input[type=checkbox],input[type=radio]{width:20px!important;min-height:20px!important;height:20px!important;flex:0 0 20px}.m-menu-grid [hidden],.m-empty[hidden]{display:none!important}
+
+:root[data-theme]{--m-accent:var(--accent)}.app[data-appearance]{--m-accent:var(--company-primary,#176253)}

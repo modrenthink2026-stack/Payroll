@@ -22,3 +22,9 @@ Payroll retains the existing company and role checks. Staff, HR and Accountant d
 ## Release status
 
 This source is a preview, not a claim of signed APK/AAB/IPA or store approval. Android compilation requires the Android SDK; iOS compilation requires macOS/Xcode. Before store submission, replace generated launcher/splash artwork, test authentication and the complete business workflow on actual Android, iPhone and iPad devices, complete privacy disclosures, and configure your developer accounts. Push notifications, biometrics, background work and native printing are outside this initial preview.
+
+## Mobile interface revision — 2026.11.13.2
+
+Compact company header, bottom navigation, searchable permitted modules, account sheet, larger form controls and phone/tablet layouts are applied only to the bundled app. Short read-only tables become labelled records on phones; financial and editable grids retain every column with horizontal scrolling. Menus use the existing role/module decisions and handlers. Customer website source and business calculations remain unchanged.
+
+The signed-in UI checks use synthetic fixtures at 320px, 390px and 1024px. CI publishes screenshots in mobile-ui-review alongside native previews. This does not substitute for physical-device acceptance.

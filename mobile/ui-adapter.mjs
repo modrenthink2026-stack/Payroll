@@ -9,6 +9,7 @@ if(start<0||end<0)throw Error('Payroll render changed; review mobile UI adapter'
 const replacement=" app.innerHTML=mobileWorkspace({navigation,page,companies,company,user:self()?.login_name||company.role,platform:typeof platform!=='undefined'&&platform,content:page?views[page]():empty('Company workspace unavailable','Contact the platform administrator to enable modules.')});";
 s=s.slice(0,start)+replacement+s.slice(end);
 s="import {mobileWorkspace} from './mobile-payroll-shell.js';\n"+s;
+s=replaceRequired(s,'<div class="login-tools">','<div class="m-brand"><span class="m-logo" aria-hidden="true">P</span><strong>Payroll Manager</strong></div><div class="login-tools">');
 await writeFile(file,s);
 await writeFile(join(www,'mobile-payroll-shell.js'),await readFile(new URL('./mobile-payroll-shell.js',import.meta.url),'utf8'));
 }

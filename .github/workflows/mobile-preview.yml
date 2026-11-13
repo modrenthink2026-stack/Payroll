@@ -29,14 +29,6 @@ jobs:
         working-directory: mobile
       - run: npm run platforms && npm test && npx cap sync android
         working-directory: mobile
-      - run: npx playwright install --with-deps chromium && npm run test:ui
-        working-directory: mobile
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: mobile-ui-review
-          path: mobile/qa/
-          retention-days: 7
       - run: bash gradlew assembleDebug --no-daemon
         working-directory: mobile/android
       - uses: actions/upload-artifact@v4
@@ -66,5 +58,30 @@ jobs:
         with:
           name: ios-simulator-preview
           path: mobile/build/Build/Products/Debug-iphonesimulator/*.app
+          if-no-files-found: error
+          retention-days: 7
+
+  ui-review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci
+      - run: npm ci
+        working-directory: mobile
+      - run: npm run build
+        working-directory: mobile
+      - run: npx playwright install --with-deps chromium && npm run test:ui
+        working-directory: mobile
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mobile-ui-review
+          path: mobile/qa/
           if-no-files-found: error
           retention-days: 7
