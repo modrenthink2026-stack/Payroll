@@ -1,0 +1,18 @@
+{
+  "appId": "com.modrenthink.payrollmanager",
+  "appName": "Payroll Manager",
+  "webDir": "www",
+  "backgroundColor": "#f4f6fb",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false
+  },
+  "ios": {
+    "contentInset": "automatic",
+    "preferredContentMode": "recommended",
+    "webContentsDebuggingEnabled": false
+  }
+}
