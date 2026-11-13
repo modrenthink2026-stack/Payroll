@@ -29,6 +29,8 @@ await build({entryPoints:[join(here,'native-shell.js')],bundle:true,format:'iife
 await cp(join(here,'mobile.css'),join(www,'mobile.css'));
 let html=await readFile(join(www,'index.html'),'utf8');
 html=html.replace(/width=device-width,\s*initial-scale=1(?:\.0)?/, 'width=device-width,initial-scale=1,viewport-fit=cover');
+const policy=`default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' blob: ${app.supabaseUrl}; img-src 'self' data: blob:; object-src 'none'; base-uri 'self'; form-action 'self'`;
+html=html.replace('<head>','<head><meta http-equiv="Content-Security-Policy" content="'+policy+'">');
 html=html.replace('</head>','<link rel="stylesheet" href="/mobile.css"><script src="/native-shell.js"></script></head>');
 await writeFile(join(www,'index.html'),html);
 console.log(`${app.name}: bundled mobile web assets ready. No production records or web sources were changed.`);

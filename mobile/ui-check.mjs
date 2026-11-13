@@ -24,7 +24,7 @@ try{
   '@capacitor/share':"export const Share={share:async(o)=>{window.__shared=o}}"
  };
  const bundle=await build({entryPoints:['native-shell.js'],bundle:true,write:false,format:'iife',plugins:[{name:'native-test-mocks',setup(b){b.onResolve({filter:/^@capacitor\//},a=>({path:a.path,namespace:'mock'}));b.onLoad({filter:/.*/,namespace:'mock'},a=>({contents:mocks[a.path],loader:'js'}));}}]});
- const page=await browser.newPage();await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());await page.goto(`http://127.0.0.1:${server.address().port}/`);await page.addScriptTag({content:bundle.outputFiles[0].text});
+ const page=await browser.newPage();await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());await page.goto(`http://127.0.0.1:${server.address().port}/`);await page.evaluate(bundle.outputFiles[0].text);
  await page.evaluate(()=>{const a=document.createElement('a');a.download='../salary.csv';a.href=URL.createObjectURL(new Blob(['synthetic,123'],{type:'text/csv'}));a.click();URL.revokeObjectURL(a.href);});
  await page.waitForFunction(()=>window.__shared&&window.__deleted);
  const actual=await page.evaluate(()=>({written:window.__written,shared:window.__shared,deleted:window.__deleted}));

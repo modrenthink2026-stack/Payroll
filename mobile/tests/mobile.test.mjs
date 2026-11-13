@@ -22,7 +22,7 @@ test('Android backup/cleartext disabled and iOS supports iPhone and iPad',async(
  const privacy=await readFile(new URL('../ios/App/App/PrivacyInfo.xcprivacy',import.meta.url),'utf8');assert.match(privacy,/C617.1/);assert.match(pbx,/PrivacyInfo.xcprivacy in Resources/);
 });
 test('bundled HTML has mobile shell and contains no website-only API route',async()=>{
- const html=await readFile(new URL('../www/index.html',import.meta.url),'utf8');assert.match(html,/viewport-fit=cover/);assert.match(html,/native-shell.js/);assert.match(html,/mobile.css/);
+ const html=await readFile(new URL('../www/index.html',import.meta.url),'utf8');assert.match(html,/viewport-fit=cover/);assert.match(html,/native-shell.js/);assert.match(html,/mobile.css/);assert.match(html,/Content-Security-Policy/);assert.match(html,/script-src 'self';/);assert.match(html,/connect-src 'self' blob: https:\/\/uvowltyjnzqtozygalhf.supabase.co;/);
  if(app.kind==='payroll'){const c=await readFile(new URL('../www/config.js',import.meta.url),'utf8');assert.match(c,/https:\/\/uvowltyjnzqtozygalhf.supabase.co/);assert.doesNotMatch(c,/url: '\/supabase'/);}
 });
 test('Project Manager mobile preview resolves master from settings and reuses the fixed-company write boundary',{skip:app.kind!=='project'},async()=>{
