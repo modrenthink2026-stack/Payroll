@@ -1,8 +1,11 @@
-import {Capacitor} from '@capacitor/core';
+import {Capacitor,CapacitorHttp} from '@capacitor/core';
+import app from './app.json';
+import {accountFetch} from './account-transport.mjs';
 import {App} from '@capacitor/app';
 import {Filesystem,Directory} from '@capacitor/filesystem';
 import {Share} from '@capacitor/share';
 if(Capacitor.isNativePlatform()){
+ window.fetch=accountFetch(window.fetch.bind(window),options=>CapacitorHttp.request(options),app);
  const notice=document.createElement('div');notice.id='native-connectivity';notice.setAttribute('role','status');notice.textContent='Offline — connect to the internet before entering or saving records.';
  const connectivity=()=>{if(!navigator.onLine&&!notice.isConnected)document.body?.append(notice);if(navigator.onLine)notice.remove();};
  addEventListener('online',connectivity);addEventListener('offline',connectivity);addEventListener('DOMContentLoaded',connectivity);

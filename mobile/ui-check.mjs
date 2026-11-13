@@ -18,7 +18,7 @@ try{
   await page.close();
  }
  const mocks={
-  '@capacitor/core':"export const Capacitor={isNativePlatform:()=>true}",
+  '@capacitor/core':"export const Capacitor={isNativePlatform:()=>true};export const CapacitorHttp={request:async()=>{throw Error('Unexpected account network call in synthetic UI check')}}",
   '@capacitor/app':"export const App={addListener:async(name,fn)=>{(window.__nativeListeners??={})[name]=fn},exitApp:async()=>{window.__exit=true}}",
   '@capacitor/filesystem':"export const Directory={Cache:'CACHE'}; export const Filesystem={rmdir:async()=>{},writeFile:async(o)=>{window.__written=o;return {uri:'file:///cache/'+o.path}},deleteFile:async(o)=>{window.__deleted=o}}",
   '@capacitor/share':"export const Share={share:async(o)=>{window.__shared=o}}"

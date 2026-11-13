@@ -11,6 +11,7 @@ Build identity: `com.modrenthink.payrollmanager`. Confirm ownership/reserve this
 ## Mobile adaptations
 
 - Bundled mobile builds use the existing HTTPS Supabase project directly, rather than the website-only `/supabase` proxy. Publishable keys are public; RLS and RPC authorization remain authoritative.
+- Payroll account-management calls use a narrowly scoped native HTTP adapter that retains the user JWT. Website Origin restrictions and server role checks are unchanged. Other API and blob requests keep normal fetch.
 - Recovery emails return to `https://payroll-orpin-one.vercel.app`. Complete password recovery in the browser and sign into the app afterward; existing paste-link verification remains available. Do not add wildcard native redirect URLs or weaken Auth settings.
 - CSV/JSON blob exports open the native share/save sheet after an authorized export action. Temporary exports are stored in app cache, removed after sharing, and the export directory is cleaned on the next app launch. No automatic email or messaging occurs.
 - Safe-area spacing, touch targets, iPad resizing, connectivity notice and confirmation before Android exit are included. Offline writes/queues are not introduced.
