@@ -1,0 +1,34 @@
+import {cp, mkdir, readFile, writeFile, rm} from 'node:fs/promises';
+import {dirname,resolve,join} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {spawnSync} from 'node:child_process';
+import {build} from 'esbuild';
+import {adaptPayroll,adaptProject,secureOrigin} from './web-adapter.mjs';
+const here=dirname(fileURLToPath(import.meta.url)),root=resolve(here,'..');
+const app=JSON.parse(await readFile(join(here,'app.json'),'utf8'));
+secureOrigin(app.webOrigin);secureOrigin(app.supabaseUrl);
+const www=join(here,'www'),stage=join(here,'.web-source');
+await rm(www,{recursive:true,force:true});await mkdir(www,{recursive:true});
+if(app.kind==='payroll'){
+ await cp(join(root,'public'),www,{recursive:true});
+ const api=await readFile(join(www,'api.js'),'utf8');
+ await writeFile(join(www,'api.js'),adaptPayroll(api,app.webOrigin));
+ const config=(await readFile(join(www,'config.js'),'utf8')).replace("url: '/supabase'",'url: '+JSON.stringify(app.supabaseUrl));
+ if(!config.includes('url: '+JSON.stringify(app.supabaseUrl)))throw Error('Payroll API configuration changed; review mobile adapter.');
+ await writeFile(join(www,'config.js'),config);
+}else{
+ await rm(stage,{recursive:true,force:true});await mkdir(stage,{recursive:true});
+ for(const path of ['src','public','index.html','vite.config.js'])await cp(join(root,path),join(stage,path),{recursive:true});
+ await mkdir(join(stage,'supabase/functions/_shared'),{recursive:true});
+ await cp(join(root,'supabase/functions/_shared/login-identifiers.js'),join(stage,'supabase/functions/_shared/login-identifiers.js'));
+ await adaptProject(stage,app.webOrigin);
+ const result=spawnSync(process.execPath,[join(root,'node_modules/vite/bin/vite.js'),'build',stage,'--outDir',www,'--base','/'],{cwd:root,env:{...process.env,GITHUB_REPOSITORY:''},stdio:'inherit'});
+ if(result.status!==0)throw Error('Project Manager web build failed');
+}
+await build({entryPoints:[join(here,'native-shell.js')],bundle:true,format:'iife',target:'es2022',outfile:join(www,'native-shell.js'),minify:true,legalComments:'eof'});
+await cp(join(here,'mobile.css'),join(www,'mobile.css'));
+let html=await readFile(join(www,'index.html'),'utf8');
+html=html.replace(/width=device-width,\s*initial-scale=1(?:\.0)?/, 'width=device-width,initial-scale=1,viewport-fit=cover');
+html=html.replace('</head>','<link rel="stylesheet" href="/mobile.css"><script src="/native-shell.js"></script></head>');
+await writeFile(join(www,'index.html'),html);
+console.log(`${app.name}: bundled mobile web assets ready. No production records or web sources were changed.`);
