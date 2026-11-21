@@ -53,3 +53,20 @@ test('The default payroll month follows India time across UTC month boundaries',
   assert.equal(vm.runInNewContext(expression,{Date:Clock}),expected);
  }
 });
+
+test('Ops distinguishes a genuine role denial from a failed access check and allows retry',async()=>{
+ for(const message of ['Platform administrator access required','Network fetch failed','Session expired']){
+  const {context,app}=harness(async()=>{throw Error(message)});
+  context.location={pathname:'/ops'};context.esc=x=>String(x).replaceAll('<','&lt;');context.currentUser=()=>({email:'owner@example.test'});
+  await context.load();
+  assert.match(app.innerHTML,message==='Platform administrator access required'?/Platform owner login required/:/Unable to check Ops access/);
+  assert.ok(app.innerHTML.includes('data-action="reload"'));assert.ok(app.innerHTML.includes('Sign in with another account'));
+  assert.equal(context.platform,null);assert.equal(Object.keys(context.data).length,0);assert.match(app.innerHTML,/owner@example.test/);
+ }
+});
+test('Authorized Ops loads its own controls without loading company records',async()=>{
+ const snapshot={companies:[{id:'a'}]};const {context}=harness(async()=>snapshot);let renders=0;
+ context.location={pathname:'/ops'};context.opsPolicy=async()=>({policies:[]});context.releaseAction=async()=>({catalog:[]});context.renderPlatform=()=>renders++;
+ context.rpc=async()=>{throw Error('Ops must not load company records')};
+ await context.load();assert.equal(renders,1);assert.equal(context.company,null);assert.equal(context.platform,snapshot);
+});
