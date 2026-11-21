@@ -1,4 +1,4 @@
-import {opsPanels,integrationKeys} from './ops-interface.js';
+import {opsPanels,integrationKeys,centreMarkup,companyCards} from './ops-interface.js';
 import {accountMarkup,moduleMarkup,bindWorkspaceControls} from './workspace-controls.js';
 import {holidayRows} from './holidays.js';
 import {attendanceSections,selectedAttendanceSection} from './attendance-navigation.js';
@@ -191,15 +191,21 @@ function form(title,html,onSubmit){modal.classList.remove('salary-editor','raw-r
 function show(title,html){modal.classList.remove('salary-editor','raw-register-editor');modal.innerHTML=`<h2>${esc(title)}</h2>${html}<div class="form-foot"><button class="secondary" data-action="modal-close">Close</button></div>`;modal.showModal();}
 const platformModules=[['staff','Staff master'],['attendance','Attendance'],['attendance_register_v1','Monthly biometric register'],['leave','Leave and approvals'],['payroll','Payroll and payslips'],['letters','Letters and service'],['assessments','Assessments and increments'],['reports','Reports'],['settings','Company settings']];
 let platformCompanyId='';
+let platformTab='companies';
 function renderPlatform(){
  const selected=platform?.companies?.find(c=>c.id===platformCompanyId)||platform?.companies?.[0];platformCompanyId=selected?.id||'';
- if(!selected){app.innerHTML='<main class="main"><section class="panel"><h1>Platform Administration</h1><p>No payroll companies exist yet.</p>'+btn('Create company','platform-company-new','',false)+'</section></main>';return;}
- const modules=selected.modules||{};
- app.innerHTML=`<div class="shell"><header class="workspace-header"><div class="topbar"><div class="brand"><span class="brand-mark">p</span><div>Payroll Manager<small>PLATFORM ADMINISTRATION</small></div></div><div class="top-user"><span class="pill">Platform Administrator</span><button class="secondary" data-action="platform-back">Company workspace</button><button class="secondary" data-action="password">Password</button><button class="secondary" data-action="logout">Sign out</button></div></div></header><main class="main">${head('Platform administration','Manage company activation, module access and company administrator onboarding.',btn('Create company','platform-company-new','',false))}<section class="panel"><div class="toolbar"><label for="platform-company">Company</label><select id="platform-company">${platform.companies.map(c=>`<option value="${esc(c.id)}" ${c.id===selected.id?'selected':''}>${esc(c.name)} · ${esc(c.status)}</option>`).join('')}</select></div><div class="cards compact"><div class="card"><div class="label">Active staff</div><div class="value">${selected.staff}</div></div><div class="card"><div class="label">Company users</div><div class="value">${selected.members}</div></div><div class="card"><div class="label">Access status</div><div class="value">${esc(selected.status)}</div></div></div><div class="platform-admin-grid"><label>Company status<select id="platform-status"><option value="active" ${selected.status==='active'?'selected':''}>Active</option><option value="paused" ${selected.status==='paused'?'selected':''}>Paused</option></select></label><div><strong>Enabled Payroll modules</strong><div class="platform-module-checks">${platformModules.map(([key,label])=>`<label><input type="checkbox" data-platform-module="${key}" ${modules[key]===true?'checked':''}>${label}</label>`).join('')}</div></div></div><div class="actions">${btn('Save company access','platform-company-save',selected.id,false)}${btn('Create company admin login','platform-company-user',selected.id)}<button class="secondary" data-action="platform-refresh">Refresh</button></div><p class="muted small-text">Paused companies and disabled modules reject new backend writes. Existing records remain protected by the company and role checks. Passwords are temporary and must be changed at first sign-in.</p></section><section class="panel"><h2>All companies</h2>${table(['Company','Status','Enabled modules','Active staff','Users','Revision'],platform.companies.map(c=>[esc(c.name),pill(c.status),platformModules.filter(([k])=>c.modules?.[k]===true).map(([,label])=>label).join(', ')||'None',c.staff,c.members,c.revision]))}</section></main></div>`;
- app.querySelector('main').insertAdjacentHTML('beforeend',opsPanels(selected,opsPolicies,opsReleases,opsFeature));
+ let body='';
+ if(platformTab==='companies'||!selected)body=companyCards(platform?.companies||[]);
+ else if(platformTab==='modules')body=`<section class="centre-card"><h2>Modules</h2><div class="centre-checks">${platformModules.map(([key,label])=>`<label><input type="checkbox" data-platform-module="${key}" ${selected.modules?.[key]===true?'checked':''}>${esc(label)}</label>`).join('')}</div>${btn('Save modules','platform-company-save',selected.id,false)}</section>`;
+ else if(platformTab==='administrator')body=`<section class="centre-card"><h2>Administrator setup</h2><p>Create a username login for ${esc(selected.name)}. No employee record is required. The temporary password must be changed at first sign-in.</p>${btn('Set up Administrator','platform-company-user',selected.id,false)}</section>`;
+ else body=opsPanels(selected,opsPolicies,opsReleases,opsFeature,platformTab);
+ if(platformTab==='pass'&&selected)body=`<section class="centre-card"><h2>Company access</h2><label>Status<select id="platform-status"><option value="active" ${selected.status==='active'?'selected':''}>Active</option><option value="paused" ${selected.status==='paused'?'selected':''}>Paused</option></select></label>${btn('Save access status','platform-company-save',selected.id,false)}</section>`+body;
+ app.innerHTML=centreMarkup(platform?.companies||[],selected,platformTab,body);
  if($('#ops-feature'))$('#ops-feature').onchange=e=>{opsFeature=e.target.value;renderPlatform()};
- $('#platform-company').onchange=e=>{platformCompanyId=e.target.value;renderPlatform();};
+ if($('#platform-company'))$('#platform-company').onchange=e=>{platformCompanyId=e.target.value;renderPlatform()};
+ if($('#ops-create-company'))$('#ops-create-company').onsubmit=async e=>{e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;try{await platformAdmin({action:'create_company',name:new FormData(e.target).get('name'),address:''});platform=await platformAdmin({action:'snapshot'});renderPlatform();toast('Company created with modules disabled')}catch(error){button.disabled=false;toast(error.message)}};
 }
+
 const personnel=id=>data.staff_details?.find(d=>d.staff_id===id)?.details||{};
 const coreRosterFields={'Staff Code':'code','Staff Name':'name','Staff Department Name':'department','Designation':'designation','Date Of Joining':'joining_date','Biometric Code':'biometric_id','Bank AccountNo':'bank_account','IFSCCode':'ifsc','PANCard No':'pan','UAN':'uan','ESINo':'esi_number'};
 function lateEventTable(row){return table(['Date','Day','Reporting time','In Time (late arrivals only)','Late duration','Cumulative late duration','Allowance / decision'],row.plan.events.map(e=>[esc(e.date),esc(e.day||''),esc(e.reporting_time||''),esc(e.in_time||''),e.seconds!=null?secondsClock(e.seconds):minutesClock(e.minutes),e.cumulative_seconds!=null?secondsClock(e.cumulative_seconds):minutesClock(e.cumulative_minutes),e.covered?'Covered':esc(row.review?.decisions.find(d=>d.attendance_id===e.attendance_id)?.decision?.toUpperCase()||'Pending 0.5 day decision')]));}
@@ -362,7 +368,9 @@ async function action(a,id){
  if(a==='company-new'){location.href='/ops';return;}
  if(a==='platform-admin'){location.href='/ops';return;}
  if(a==='platform-back'){location.href='/';return;}
- if(a==='ops-policy-save'){const policy=opsPolicies.find(x=>x.company_id===id)||{revision:0};await opsPolicy({action:'save',company_id:id,revision:policy.revision,pass_expires_on:$('#ops-pass').value,integrations:Object.fromEntries(integrationKeys.map(([key])=>[key,Boolean(document.querySelector('[data-ops-integration="'+key+'"]')?.checked)]))});opsPolicies=(await opsPolicy({action:'snapshot'})).policies;renderPlatform();toast('Company pass and integration eligibility saved');return;}
+ if(a==='ops-tab'){platformTab=id;renderPlatform();return;}
+ if(a==='ops-company-select'){platformCompanyId=id;platformTab='administrator';renderPlatform();return;}
+ if(a==='ops-policy-save'){const policy=opsPolicies.find(x=>x.company_id===id)||{revision:0};await opsPolicy({action:'save',company_id:id,revision:policy.revision,pass_expires_on:$('#ops-pass')?.value??policy.pass_expires_on??null,integrations:Object.fromEntries(integrationKeys.map(([key])=>[key,(document.querySelector('[data-ops-integration="'+key+'"]')?.checked??policy.integrations?.[key]??false)]))});opsPolicies=(await opsPolicy({action:'snapshot'})).policies;renderPlatform();toast('Company pass and integration eligibility saved');return;}
  if(a==='ops-refresh'){opsReleases=await releaseAction({action:'snapshot'});renderPlatform();return;}
  if(a==='ops-release'){const feature=opsReleases?.catalog.find(f=>f.key===$('#ops-feature').value);if(!feature)throw Error('Reload the feature catalog');const cid=id==='approve_test'?opsReleases.settings.master_company_id:$('#ops-target').value;const grant=opsReleases.grants.find(g=>g.company_id===cid&&g.feature_key===feature.key);await releaseAction({action:id,company_id:cid,feature_key:feature.key,feature_revision:feature.revision,expected_revision:grant?.revision||0,reason:$('#ops-reason').value});opsReleases=await releaseAction({action:'snapshot'});platform=await platformAdmin({action:'snapshot'});renderPlatform();toast('Release decision recorded');return;}
  if(a==='platform-refresh'){platform=await platformAdmin({action:'snapshot'});renderPlatform();return;}
@@ -371,8 +379,8 @@ async function action(a,id){
  }
  if(a==='platform-company-save'){
   const selected=platform?.companies?.find(c=>c.id===id);if(!selected)throw Error('Company not found.');
-  const modules=Object.fromEntries(platformModules.map(([key])=>[key,Boolean(document.querySelector(`[data-platform-module="${key}"]`)?.checked)]));
-  await platformAdmin({action:'update_company',company_id:id,status:$('#platform-status').value,modules,revision:selected.revision});platform=await platformAdmin({action:'snapshot'});renderPlatform();toast('Company access updated');return;
+  const modules=Object.fromEntries(platformModules.map(([key])=>[key,(document.querySelector(`[data-platform-module="${key}"]`)?.checked??selected.modules?.[key]??false)]));
+  await platformAdmin({action:'update_company',company_id:id,status:$('#platform-status')?.value??selected.status,modules,revision:selected.revision});platform=await platformAdmin({action:'snapshot'});renderPlatform();toast('Company access updated');return;
  }
  if(a==='platform-company-user'){
   if(!platform?.companies?.some(c=>c.id===id))throw Error('Company not found.');
