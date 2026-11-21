@@ -2,10 +2,11 @@ import {salaryPayload} from './salary.js';
 import {loginEmail} from './access.js';
 import {config} from './config.js';
 import {parseRecoveryLink} from './recovery.js';
+const sessionKey=globalThis.location?.pathname.replace(/\/$/,'')==='/ops'?'payroll-ops-session':'payroll-session';
 let session=null;
-try{session=JSON.parse(sessionStorage.getItem('payroll-session')||'null');}catch{sessionStorage.setItem('payroll-session','null');}
+try{session=JSON.parse(sessionStorage.getItem(sessionKey)||'null');}catch{sessionStorage.setItem(sessionKey,'null');}
 export const currentUser=()=>session?.user;
-function save(s){session=s;sessionStorage.setItem('payroll-session',JSON.stringify(s));}
+function save(s){session=s;sessionStorage.setItem(sessionKey,JSON.stringify(s));}
 async function request(path,body,token){
   const res=await fetch(config.url+path,{method:'POST',headers:{apikey:config.key,'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify(body)});
   const data=await res.json().catch(()=>({message:'Unexpected server response'}));
@@ -76,3 +77,6 @@ export async function rawBiometric(payload){await refresh();return request('/res
 export async function attendanceRegister(payload){await refresh();return request('/rest/v1/rpc/payroll_attendance_register',{payload},session.access_token);}
 
 export async function holidayCalendar(payload){await refresh();return request('/rest/v1/rpc/payroll_holidays',{payload},session.access_token);}
+
+export async function opsPolicy(payload){await refresh();return request('/rest/v1/rpc/payroll_ops_policy',{payload},session.access_token)}
+export async function releaseAction(payload){await refresh();return request('/rest/v1/rpc/payroll_release_action_v2',{payload},session.access_token)}

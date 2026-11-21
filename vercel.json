@@ -50,6 +50,10 @@
     {
       "source": "/supabase/:path*",
       "destination": "https://uvowltyjnzqtozygalhf.supabase.co/:path*"
+    },
+    {
+      "source": "/ops",
+      "destination": "/index.html"
     }
   ]
 }

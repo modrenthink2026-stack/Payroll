@@ -26,7 +26,8 @@ test('password authentication, payroll data and logout use the same-origin proxy
 
 test('Vercel proxy forwards only to this Supabase project and disables caching',async()=>{
  const v=JSON.parse(await readFile(new URL('../vercel.json',import.meta.url)));
- assert.deepEqual(v.rewrites,[{source:'/supabase/:path*',destination:'https://uvowltyjnzqtozygalhf.supabase.co/:path*'}]);
+ assert.deepEqual(v.rewrites.filter(r=>r.source.startsWith('/supabase')),[{source:'/supabase/:path*',destination:'https://uvowltyjnzqtozygalhf.supabase.co/:path*'}]);
+ assert.ok(v.rewrites.some(r=>r.source==='/ops'&&r.destination==='/index.html'));
  const headers=v.headers.find(h=>h.source==='/supabase/:path*').headers;
  for(const name of ['Cache-Control','CDN-Cache-Control','Vercel-CDN-Cache-Control'])assert.ok(headers.some(h=>h.key===name&&h.value==='no-store'));
 });
