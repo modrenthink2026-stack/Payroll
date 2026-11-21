@@ -1,0 +1,7 @@
+{
+  "kind": "payroll",
+  "name": "Payroll Manager",
+  "appId": "com.modrenthink.payrollmanager",
+  "webOrigin": "https://payroll-orpin-one.vercel.app",
+  "supabaseUrl": "https://uvowltyjnzqtozygalhf.supabase.co"
+}
